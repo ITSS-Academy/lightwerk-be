@@ -370,19 +370,19 @@ export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
   if (resolution.height > 1440) {
     encodeFunc = encodeMaxOriginal
   }
-  // await encodeFunc({
-  //   bitrate: {
-  //     720: bitrate720,
-  //     1080: bitrate1080,
-  //     1440: bitrate1440,
-  //     original: bitrate
-  //   },
-  //   inputPath,
-  //   isHasAudio,
-  //   outputPath,
-  //   outputSegmentPath,
-  //   resolution
-  // })
+  await encodeFunc({
+    bitrate: {
+      720: bitrate720,
+      1080: bitrate1080,
+      1440: bitrate1440,
+      original: bitrate
+    },
+    inputPath,
+    isHasAudio,
+    outputPath,
+    outputSegmentPath,
+    resolution
+  })
   return resolution
 }
 
@@ -488,7 +488,7 @@ export async function convertAndUploadToSupabase(
     await deleteSupabaseFolder(videoId);
   } finally {
     // Cleanup local files nếu cần
-    // fs.rmSync(mergedDir, { recursive: true, force: true });
+    fs.rmSync(mergedDir, { recursive: true, force: true });
   }
 }
 
