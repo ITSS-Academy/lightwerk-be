@@ -1,4 +1,7 @@
 import * as path from 'path'
+import { supabase } from './supabase';
+import * as fs from 'fs'
+import { sleep } from 'zx';
 
 const MAXIMUM_BITRATE_720P = 5 * 10 ** 6 // 5Mbps
 const MAXIMUM_BITRATE_1080P = 8 * 10 ** 6 // 8Mbps
@@ -22,21 +25,39 @@ export const checkVideoHasAudio = async (filePath: string) => {
 }
 
 const getBitrate = async (filePath: string) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
-  const { stdout } = await $`ffprobe ${[
-    '-v',
-    'error',
-    '-select_streams',
-    'v:0',
-    '-show_entries',
-    'stream=bit_rate',
-    '-of',
-    'default=nw=1:nk=1',
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
+
+  // Ưu tiên đọc bitrate từ stream video
+  const { stdout: streamOut } = await $`ffprobe ${[
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=bit_rate',
+    '-of', 'default=nw=1:nk=1',
     slash(filePath)
-  ]}`
-  return Number(stdout.trim())
-}
+  ]}`;
+
+  let bitrate = Number(streamOut.trim());
+
+  if (!streamOut.trim() || isNaN(bitrate) || bitrate === 0) {
+    // Fallback: đọc bitrate từ định dạng tổng
+    const { stdout: formatOut } = await $`ffprobe ${[
+      '-v', 'error',
+      '-show_entries', 'format=bit_rate',
+      '-of', 'default=nw=1:nk=1',
+      slash(filePath)
+    ]}`;
+    bitrate = Number(formatOut.trim());
+  }
+
+  if (isNaN(bitrate) || bitrate === 0) {
+    throw new Error(`Unable to parse video bitrate from file: ${filePath}`);
+  }
+
+  return bitrate;
+};
+
+
 
 const getResolution = async (filePath: string) => {
   const { $ } = await import('zx')
@@ -100,11 +121,11 @@ const encodeMax720 = async ({
     '-i',
     slash(inputPath),
     '-preset',
-    'veryslow',
+    'fast',
     '-g',
     '48',
     '-crf',
-    '17',
+    '23',
     '-sc_threshold',
     '0',
     '-map',
@@ -158,7 +179,7 @@ const encodeMax1080 = async ({
   const { $ } = await import('zx')
   const slash = (await import('slash')).default
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'veryslow', '-g', '48', '-crf', '17', '-sc_threshold', '0']
+  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
   if (isHasAudio) {
     args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
   } else {
@@ -215,7 +236,7 @@ const encodeMax1440 = async ({
   const { $ } = await import('zx')
   const slash = (await import('slash')).default
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'veryslow', '-g', '48', '-crf', '17', '-sc_threshold', '0']
+  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
   if (isHasAudio) {
     args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
   } else {
@@ -278,7 +299,7 @@ const encodeMaxOriginal = async ({
   const { $ } = await import('zx')
   const slash = (await import('slash')).default
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'veryslow', '-g', '48', '-crf', '17', '-sc_threshold', '0']
+  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
   if (isHasAudio) {
     args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
   } else {
@@ -349,18 +370,195 @@ export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
   if (resolution.height > 1440) {
     encodeFunc = encodeMaxOriginal
   }
-  await encodeFunc({
-    bitrate: {
-      720: bitrate720,
-      1080: bitrate1080,
-      1440: bitrate1440,
-      original: bitrate
-    },
-    inputPath,
-    isHasAudio,
-    outputPath,
-    outputSegmentPath,
-    resolution
-  })
-  return true
+  // await encodeFunc({
+  //   bitrate: {
+  //     720: bitrate720,
+  //     1080: bitrate1080,
+  //     1440: bitrate1440,
+  //     original: bitrate
+  //   },
+  //   inputPath,
+  //   isHasAudio,
+  //   outputPath,
+  //   outputSegmentPath,
+  //   resolution
+  // })
+  return resolution
+}
+
+async function retryUpload(fn: () => Promise<any>, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.warn(`🔁 Retry ${i + 1}: ${err.message}`);
+      await sleep(1000);
+    }
+  }
+}
+
+export async function convertAndUploadToSupabase(
+  videoId: string,
+  mergedFilePath: string
+) {
+  const mergedDir = path.dirname(mergedFilePath);
+  console.log('🔁 Encoding HLS for:', mergedFilePath);
+  try {
+    const resolution = await encodeHLSWithMultipleVideoStreams(mergedFilePath);
+    const aspectInfo = getAspectRatioInfo(resolution.width, resolution.height);
+    console.log(`📏 Aspect Ratio: ${aspectInfo.fractionRatio} (${aspectInfo.commonName})`);
+    console.log('✅ Encoding completed successfully.');
+  } catch (err) {
+    console.error('❌ Encoding failed:', err.message);
+  }
+
+  try {
+    const masterPath = path.join(mergedDir, 'master.m3u8');
+    if (!fs.existsSync(masterPath)) {
+      throw new Error('❌ master.m3u8 not found');
+    }
+
+    const masterContent = fs.readFileSync(masterPath, 'utf-8');
+    const variantFolders = [...masterContent.matchAll(/^(v\d+)\/prog_index\.m3u8$/gm)].map(
+      (m) => m[1]
+    );
+
+    const uploadTasks: { supabasePath: string; filePath: string; contentType: string }[] = [];
+
+    // Push master.m3u8
+    uploadTasks.push({
+      supabasePath: `${videoId}/master.m3u8`,
+      filePath: masterPath,
+      contentType: 'application/vnd.apple.mpegurl'
+    });
+
+    // Push các file trong từng folder (v0, v1, ...)
+    for (const folder of variantFolders) {
+      const folderPath = path.join(mergedDir, folder);
+      const files = fs.readdirSync(folderPath);
+      for (const file of files) {
+        uploadTasks.push({
+          supabasePath: `${videoId}/${folder}/${file}`,
+          filePath: path.join(folderPath, file),
+          contentType: file.endsWith('.m3u8')
+            ? 'application/vnd.apple.mpegurl'
+            : 'video/MP2T',
+        });
+      }
+    }
+
+    console.log(`📦 Total files to upload: ${uploadTasks.length}`);
+
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < uploadTasks.length; i += BATCH_SIZE) {
+      const batch = uploadTasks.slice(i, i + BATCH_SIZE);
+
+      const results = await Promise.allSettled(
+        batch.map(({ supabasePath, filePath, contentType }) =>
+          retryUpload(() =>
+            supabase.storage
+              .from('videos')
+              .upload(supabasePath, fs.createReadStream(filePath), {
+                cacheControl: '3600',
+                upsert: true,
+                contentType,
+                duplex: 'half',
+              })
+          )
+        )
+      );
+
+      results.forEach((result, idx) => {
+        const taskIndex = i + idx + 1;
+        if (result.status === 'fulfilled') {
+          console.log(`✅ Uploaded file ${taskIndex}/${uploadTasks.length}`);
+        } else {
+          console.error(`❌ Failed file ${taskIndex}:`, result.reason.message);
+        }
+      });
+
+      await sleep(1000); // delay 1s mỗi batch
+    }
+
+    console.log('✅ All files uploaded to Supabase.');
+  } catch (err) {
+    console.error('❌ Upload process failed:', err.message);
+    console.log('🧹 Cleaning up uploaded files...');
+    await deleteSupabaseFolder(videoId);
+  } finally {
+    // Cleanup local files nếu cần
+    // fs.rmSync(mergedDir, { recursive: true, force: true });
+  }
+}
+
+
+export async function deleteSupabaseFolder(folderPath: string) {
+  try {
+    const { data, error } = await supabase.storage
+      .from('videos')
+      .list(folderPath, { limit: 1000 });
+
+    if (error) {
+      console.error('⚠️ Không thể liệt kê file để xóa:', error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      console.log(`📂 Folder rỗng hoặc không tồn tại: ${folderPath}`);
+      return;
+    }
+
+    const filesToDelete = data.map((f) => `${folderPath}/${f.name}`);
+    const { error: deleteError } = await supabase.storage
+      .from('videos')
+      .remove(filesToDelete);
+
+    if (deleteError) {
+      console.error('❌ Xóa file trên Supabase thất bại:', deleteError.message);
+    } else {
+      console.log(`🧹 Đã xóa ${filesToDelete.length} file khỏi Supabase: ${folderPath}`);
+    }
+  } catch (err) {
+    console.error('❌ Lỗi không xác định khi xóa Supabase folder:', err.message);
+  }
+}
+
+export function getAspectRatioInfo(width: number, height: number): {
+  numberRatio: number;
+  fractionRatio: string;
+  commonName: string;
+  orientation: 'portrait' | 'landscape' | 'square';
+} {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+  const divisor = gcd(width, height);
+  const simpleW = width / divisor;
+  const simpleH = height / divisor;
+  const ratio = parseFloat((width / height).toFixed(4));
+  const fraction = `${simpleW}:${simpleH}`;
+
+  const aspectMap: Record<string, string> = {
+    '16:9': 'HD/Widescreen',
+    '9:16': 'Vertical/Reels',
+    '4:3': 'Standard',
+    '1:1': 'Square',
+    '21:9': 'Ultrawide'
+  };
+
+  const commonName = aspectMap[fraction] || 'Uncommon Ratio';
+
+  const orientation =
+    ratio > 1
+      ? 'landscape'
+      : ratio < 1
+        ? 'portrait'
+        : 'square';
+
+  return {
+    numberRatio: ratio,
+    fractionRatio: fraction,
+    commonName,
+    orientation
+  };
 }

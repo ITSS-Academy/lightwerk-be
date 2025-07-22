@@ -4,9 +4,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { VideoModule } from './domains/video/video.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
-  imports: [
+  imports:[
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule.forRoot()],
       useFactory: (configService: ConfigService): TypeOrmModuleOptions => {

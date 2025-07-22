@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Request, Response } from 'express';
 import { finished } from 'stream/promises';
-import { encodeHLSWithMultipleVideoStreams } from '../../utils/hls-converter';
+import { convertAndUploadToSupabase, encodeHLSWithMultipleVideoStreams } from '../../utils/hls-converter';
 
 @Controller('video')
 export class VideoController {
@@ -125,12 +125,12 @@ export class VideoController {
     writeStream.end();
 
     // Clean up chunks directory
-    // fs.rmSync(nameDir, { recursive: true, force: true });
+    // fs.rmSync(nameDir, { recursive: true, force: true })
 
     // convert to HLS
     console.log('mergedFilePath =', mergedFilePath, 'exists =', fs.existsSync(mergedFilePath))
-    await encodeHLSWithMultipleVideoStreams(
-      mergedFilePath
+    convertAndUploadToSupabase(
+      videoId, mergedFilePath
     )
 
     return {
