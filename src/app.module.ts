@@ -6,6 +6,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { VideoModule } from './domains/video/video.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { LikeVideoModule } from './domains/like-video/like-video.module';
+import { ProfileModule } from './domains/profile/profile.module';
+import { CommentVideoModule } from './domains/comment-video/comment-video.module';
+import { PlaylistModule } from './domains/playlist/playlist.module';
 
 @Module({
   imports:[
@@ -25,7 +29,11 @@ import { join } from 'path';
       },
       inject: [ConfigService],
     }),
-    VideoModule
+    VideoModule,
+    LikeVideoModule,
+    ProfileModule,
+    CommentVideoModule,
+    PlaylistModule
   ],
   controllers: [AppController],
   providers: [AppService],
