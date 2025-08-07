@@ -26,6 +26,5 @@ export class Playlist {
   profile: Profile;
 
   @ManyToMany(() => Video, (video) => video.playlists)
-  @JoinTable()
   videos: Video[];
 }

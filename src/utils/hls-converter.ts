@@ -1,15 +1,17 @@
-import * as path from 'path'
+import * as path from 'path';
 import { supabase } from './supabase';
-import * as fs from 'fs'
+import * as fs from 'fs';
 import { sleep } from 'zx';
+import { BadRequestException } from '@nestjs/common';
+import { VideoStatus } from '../enums/video-status';
 
-const MAXIMUM_BITRATE_720P = 5 * 10 ** 6 // 5Mbps
-const MAXIMUM_BITRATE_1080P = 8 * 10 ** 6 // 8Mbps
-const MAXIMUM_BITRATE_1440P = 16 * 10 ** 6 // 16Mbps
+const MAXIMUM_BITRATE_720P = 5 * 10 ** 6; // 5Mbps
+const MAXIMUM_BITRATE_1080P = 8 * 10 ** 6; // 8Mbps
+const MAXIMUM_BITRATE_1440P = 16 * 10 ** 6; // 16Mbps
 
 export const checkVideoHasAudio = async (filePath: string) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
   const { stdout } = await $`ffprobe ${[
     '-v',
     'error',
@@ -19,10 +21,10 @@ export const checkVideoHasAudio = async (filePath: string) => {
     'stream=codec_type',
     '-of',
     'default=nw=1:nk=1',
-    slash(filePath)
-  ]}`
-  return stdout.trim() === 'audio'
-}
+    slash(filePath),
+  ]}`;
+  return stdout.trim() === 'audio';
+};
 
 const getBitrate = async (filePath: string) => {
   const { $ } = await import('zx');
@@ -30,11 +32,15 @@ const getBitrate = async (filePath: string) => {
 
   // Ưu tiên đọc bitrate từ stream video
   const { stdout: streamOut } = await $`ffprobe ${[
-    '-v', 'error',
-    '-select_streams', 'v:0',
-    '-show_entries', 'stream=bit_rate',
-    '-of', 'default=nw=1:nk=1',
-    slash(filePath)
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'stream=bit_rate',
+    '-of',
+    'default=nw=1:nk=1',
+    slash(filePath),
   ]}`;
 
   let bitrate = Number(streamOut.trim());
@@ -42,10 +48,13 @@ const getBitrate = async (filePath: string) => {
   if (!streamOut.trim() || isNaN(bitrate) || bitrate === 0) {
     // Fallback: đọc bitrate từ định dạng tổng
     const { stdout: formatOut } = await $`ffprobe ${[
-      '-v', 'error',
-      '-show_entries', 'format=bit_rate',
-      '-of', 'default=nw=1:nk=1',
-      slash(filePath)
+      '-v',
+      'error',
+      '-show_entries',
+      'format=bit_rate',
+      '-of',
+      'default=nw=1:nk=1',
+      slash(filePath),
     ]}`;
     bitrate = Number(formatOut.trim());
   }
@@ -57,11 +66,9 @@ const getBitrate = async (filePath: string) => {
   return bitrate;
 };
 
-
-
 const getResolution = async (filePath: string) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
 
   const { stdout } = await $`ffprobe ${[
     '-v',
@@ -72,49 +79,52 @@ const getResolution = async (filePath: string) => {
     'stream=width,height',
     '-of',
     'csv=s=x:p=0',
-    slash(filePath)
-  ]}`
-  const resolution = stdout.trim().split('x')
-  const [width, height] = resolution
+    slash(filePath),
+  ]}`;
+  const resolution = stdout.trim().split('x');
+  const [width, height] = resolution;
   return {
     width: Number(width),
-    height: Number(height)
-  }
-}
+    height: Number(height),
+  };
+};
 
-const getWidth = (height: number, resolution: { width: number; height: number }) => {
-  const width = Math.round((height * resolution.width) / resolution.height)
+const getWidth = (
+  height: number,
+  resolution: { width: number; height: number },
+) => {
+  const width = Math.round((height * resolution.width) / resolution.height);
   // Vì ffmpeg yêu cầu width và height phải là số chẵn
-  return width % 2 === 0 ? width : width + 1
-}
+  return width % 2 === 0 ? width : width + 1;
+};
 
 type EncodeByResolution = {
-  inputPath: string
-  isHasAudio: boolean
+  inputPath: string;
+  isHasAudio: boolean;
   resolution: {
-    width: number
-    height: number
-  }
-  outputSegmentPath: string
-  outputPath: string
+    width: number;
+    height: number;
+  };
+  outputSegmentPath: string;
+  outputPath: string;
   bitrate: {
-    720: number
-    1080: number
-    1440: number
-    original: number
-  }
-}
+    720: number;
+    1080: number;
+    1440: number;
+    original: number;
+  };
+};
 
 const encodeMax720 = async ({
-                              bitrate,
-                              inputPath,
-                              isHasAudio,
-                              outputPath,
-                              outputSegmentPath,
-                              resolution
-                            }: EncodeByResolution) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  bitrate,
+  inputPath,
+  isHasAudio,
+  outputPath,
+  outputSegmentPath,
+  resolution,
+}: EncodeByResolution) => {
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
 
   const args = [
     '-y',
@@ -129,10 +139,10 @@ const encodeMax720 = async ({
     '-sc_threshold',
     '0',
     '-map',
-    '0:0'
-  ]
+    '0:0',
+  ];
   if (isHasAudio) {
-    args.push('-map', '0:1')
+    args.push('-map', '0:1');
   }
   args.push(
     '-s:v:0',
@@ -143,12 +153,12 @@ const encodeMax720 = async ({
     `${bitrate[720]}`,
     '-c:a',
     'copy',
-    '-var_stream_map'
-  )
+    '-var_stream_map',
+  );
   if (isHasAudio) {
-    args.push('v:0,a:0')
+    args.push('v:0,a:0');
   } else {
-    args.push('v:0')
+    args.push('v:0');
   }
   args.push(
     '-master_pl_name',
@@ -156,34 +166,46 @@ const encodeMax720 = async ({
     '-f',
     'hls',
     '-hls_time',
-    '6',
+    '10',
     '-hls_list_size',
     '0',
     '-hls_segment_filename',
     slash(outputSegmentPath),
-    slash(outputPath)
-  )
+    slash(outputPath),
+  );
 
-  await $`ffmpeg ${args}`
-  return true
-}
+  await $`ffmpeg ${args}`;
+  return true;
+};
 
 const encodeMax1080 = async ({
-                               bitrate,
-                               inputPath,
-                               isHasAudio,
-                               outputPath,
-                               outputSegmentPath,
-                               resolution
-                             }: EncodeByResolution) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  bitrate,
+  inputPath,
+  isHasAudio,
+  outputPath,
+  outputSegmentPath,
+  resolution,
+}: EncodeByResolution) => {
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
+  const args = [
+    '-y',
+    '-i',
+    slash(inputPath),
+    '-preset',
+    'fast',
+    '-g',
+    '48',
+    '-crf',
+    '23',
+    '-sc_threshold',
+    '0',
+  ];
   if (isHasAudio) {
-    args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
+    args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1');
   } else {
-    args.push('-map', '0:0', '-map', '0:0')
+    args.push('-map', '0:0', '-map', '0:0');
   }
   args.push(
     '-s:v:0',
@@ -200,12 +222,12 @@ const encodeMax1080 = async ({
     `${bitrate[1080]}`,
     '-c:a',
     'copy',
-    '-var_stream_map'
-  )
+    '-var_stream_map',
+  );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1')
+    args.push('v:0,a:0 v:1,a:1');
   } else {
-    args.push('v:0 v:1')
+    args.push('v:0 v:1');
   }
   args.push(
     '-master_pl_name',
@@ -213,34 +235,59 @@ const encodeMax1080 = async ({
     '-f',
     'hls',
     '-hls_time',
-    '6',
+    '10',
     '-hls_list_size',
     '0',
     '-hls_segment_filename',
     slash(outputSegmentPath),
-    slash(outputPath)
-  )
+    slash(outputPath),
+  );
 
-  await $`ffmpeg ${args}`
-  return true
-}
+  await $`ffmpeg ${args}`;
+  return true;
+};
 
 const encodeMax1440 = async ({
-                               bitrate,
-                               inputPath,
-                               isHasAudio,
-                               outputPath,
-                               outputSegmentPath,
-                               resolution
-                             }: EncodeByResolution) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  bitrate,
+  inputPath,
+  isHasAudio,
+  outputPath,
+  outputSegmentPath,
+  resolution,
+}: EncodeByResolution) => {
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
+  const args = [
+    '-y',
+    '-i',
+    slash(inputPath),
+    '-preset',
+    'fast',
+    '-g',
+    '48',
+    '-crf',
+    '23',
+    '-sc_threshold',
+    '0',
+  ];
   if (isHasAudio) {
-    args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
+    args.push(
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+    );
   } else {
-    args.push('-map', '0:0', '-map', '0:0', '-map', '0:0')
+    args.push('-map', '0:0', '-map', '0:0', '-map', '0:0');
   }
   args.push(
     '-s:v:0',
@@ -263,12 +310,12 @@ const encodeMax1440 = async ({
     `${bitrate[1440]}`,
     '-c:a',
     'copy',
-    '-var_stream_map'
-  )
+    '-var_stream_map',
+  );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1 v:2,a:2')
+    args.push('v:0,a:0 v:1,a:1 v:2,a:2');
   } else {
-    args.push('v:0 v:1 v:2')
+    args.push('v:0 v:1 v:2');
   }
   args.push(
     '-master_pl_name',
@@ -276,34 +323,59 @@ const encodeMax1440 = async ({
     '-f',
     'hls',
     '-hls_time',
-    '6',
+    '10',
     '-hls_list_size',
     '0',
     '-hls_segment_filename',
     slash(outputSegmentPath),
-    slash(outputPath)
-  )
+    slash(outputPath),
+  );
 
-  await $`ffmpeg ${args}`
-  return true
-}
+  await $`ffmpeg ${args}`;
+  return true;
+};
 
 const encodeMaxOriginal = async ({
-                                   bitrate,
-                                   inputPath,
-                                   isHasAudio,
-                                   outputPath,
-                                   outputSegmentPath,
-                                   resolution
-                                 }: EncodeByResolution) => {
-  const { $ } = await import('zx')
-  const slash = (await import('slash')).default
+  bitrate,
+  inputPath,
+  isHasAudio,
+  outputPath,
+  outputSegmentPath,
+  resolution,
+}: EncodeByResolution) => {
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
 
-  const args = ['-y', '-i', slash(inputPath), '-preset', 'fast', '-g', '48', '-crf', '23', '-sc_threshold', '0']
+  const args = [
+    '-y',
+    '-i',
+    slash(inputPath),
+    '-preset',
+    'fast',
+    '-g',
+    '48',
+    '-crf',
+    '23',
+    '-sc_threshold',
+    '0',
+  ];
   if (isHasAudio) {
-    args.push('-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1', '-map', '0:0', '-map', '0:1')
+    args.push(
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+      '-map',
+      '0:0',
+      '-map',
+      '0:1',
+    );
   } else {
-    args.push('-map', '0:0', '-map', '0:0', '-map', '0:0')
+    args.push('-map', '0:0', '-map', '0:0', '-map', '0:0');
   }
   args.push(
     '-s:v:0',
@@ -326,12 +398,12 @@ const encodeMaxOriginal = async ({
     `${bitrate.original}`,
     '-c:a',
     'copy',
-    '-var_stream_map'
-  )
+    '-var_stream_map',
+  );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1 v:2,a:2')
+    args.push('v:0,a:0 v:1,a:1 v:2,a:2');
   } else {
-    args.push('v:0 v:1 v:2')
+    args.push('v:0 v:1 v:2');
   }
   args.push(
     '-master_pl_name',
@@ -339,52 +411,58 @@ const encodeMaxOriginal = async ({
     '-f',
     'hls',
     '-hls_time',
-    '6',
+    '10',
     '-hls_list_size',
     '0',
     '-hls_segment_filename',
     slash(outputSegmentPath),
-    slash(outputPath)
-  )
+    slash(outputPath),
+  );
 
-  await $`ffmpeg ${args}`
-  return true
-}
+  await $`ffmpeg ${args}`;
+  return true;
+};
 
 export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
-  const [bitrate, resolution] = await Promise.all([getBitrate(inputPath), getResolution(inputPath)])
-  const parent_folder = path.join(inputPath, '..')
-  const outputSegmentPath = path.join(parent_folder, 'v%v/fileSequence%d.ts')
-  const outputPath = path.join(parent_folder, 'v%v/prog_index.m3u8')
-  const bitrate720 = bitrate > MAXIMUM_BITRATE_720P ? MAXIMUM_BITRATE_720P : bitrate
-  const bitrate1080 = bitrate > MAXIMUM_BITRATE_1080P ? MAXIMUM_BITRATE_1080P : bitrate
-  const bitrate1440 = bitrate > MAXIMUM_BITRATE_1440P ? MAXIMUM_BITRATE_1440P : bitrate
-  const isHasAudio = await checkVideoHasAudio(inputPath)
-  let encodeFunc = encodeMax720
+  const [bitrate, resolution] = await Promise.all([
+    getBitrate(inputPath),
+    getResolution(inputPath),
+  ]);
+  const parent_folder = path.join(inputPath, '..');
+  const outputSegmentPath = path.join(parent_folder, 'v%v/fileSequence%d.ts');
+  const outputPath = path.join(parent_folder, 'v%v/prog_index.m3u8');
+  const bitrate720 =
+    bitrate > MAXIMUM_BITRATE_720P ? MAXIMUM_BITRATE_720P : bitrate;
+  const bitrate1080 =
+    bitrate > MAXIMUM_BITRATE_1080P ? MAXIMUM_BITRATE_1080P : bitrate;
+  const bitrate1440 =
+    bitrate > MAXIMUM_BITRATE_1440P ? MAXIMUM_BITRATE_1440P : bitrate;
+  const isHasAudio = await checkVideoHasAudio(inputPath);
+  let encodeFunc = encodeMax720;
   if (resolution.height > 720) {
-    encodeFunc = encodeMax1080
+    encodeFunc = encodeMax1080;
   }
   if (resolution.height > 1080) {
-    encodeFunc = encodeMax1440
+    encodeFunc = encodeMax1440;
   }
   if (resolution.height > 1440) {
-    encodeFunc = encodeMaxOriginal
+    encodeFunc = encodeMaxOriginal;
   }
   await encodeFunc({
     bitrate: {
       720: bitrate720,
       1080: bitrate1080,
       1440: bitrate1440,
-      original: bitrate
+      original: bitrate,
     },
     inputPath,
     isHasAudio,
     outputPath,
     outputSegmentPath,
-    resolution
-  })
-  return resolution
-}
+    resolution,
+  });
+  return resolution;
+};
 
 async function retryUpload(fn: () => Promise<any>, retries = 3) {
   for (let i = 0; i < retries; i++) {
@@ -400,14 +478,23 @@ async function retryUpload(fn: () => Promise<any>, retries = 3) {
 
 export async function convertAndUploadToSupabase(
   videoId: string,
-  mergedFilePath: string
+  mergedFilePath: string,
 ) {
   const mergedDir = path.dirname(mergedFilePath);
   console.log('🔁 Encoding HLS for:', mergedFilePath);
+  let aspectInfo:
+    | {
+        fractionRatio: string;
+        commonName: string;
+      }
+    | undefined;
+
   try {
     const resolution = await encodeHLSWithMultipleVideoStreams(mergedFilePath);
-    const aspectInfo = getAspectRatioInfo(resolution.width, resolution.height);
-    console.log(`📏 Aspect Ratio: ${aspectInfo.fractionRatio} (${aspectInfo.commonName})`);
+    aspectInfo = getAspectRatioInfo(resolution.width, resolution.height);
+    console.log(
+      `📏 Aspect Ratio: ${aspectInfo.fractionRatio} (${aspectInfo.commonName})`,
+    );
     console.log('✅ Encoding completed successfully.');
   } catch (err) {
     console.error('❌ Encoding failed:', err.message);
@@ -420,17 +507,21 @@ export async function convertAndUploadToSupabase(
     }
 
     const masterContent = fs.readFileSync(masterPath, 'utf-8');
-    const variantFolders = [...masterContent.matchAll(/^(v\d+)\/prog_index\.m3u8$/gm)].map(
-      (m) => m[1]
-    );
+    const variantFolders = [
+      ...masterContent.matchAll(/^(v\d+)\/prog_index\.m3u8$/gm),
+    ].map((m) => m[1]);
 
-    const uploadTasks: { supabasePath: string; filePath: string; contentType: string }[] = [];
+    const uploadTasks: {
+      supabasePath: string;
+      filePath: string;
+      contentType: string;
+    }[] = [];
 
     // Push master.m3u8
     uploadTasks.push({
       supabasePath: `${videoId}/master.m3u8`,
       filePath: masterPath,
-      contentType: 'application/vnd.apple.mpegurl'
+      contentType: 'application/vnd.apple.mpegurl',
     });
 
     // Push các file trong từng folder (v0, v1, ...)
@@ -464,9 +555,9 @@ export async function convertAndUploadToSupabase(
                 upsert: true,
                 contentType,
                 duplex: 'half',
-              })
-          )
-        )
+              }),
+          ),
+        ),
       );
 
       results.forEach((result, idx) => {
@@ -481,7 +572,15 @@ export async function convertAndUploadToSupabase(
       await sleep(1000); // delay 1s mỗi batch
     }
 
-    console.log('✅ All files uploaded to Supabase.');
+    if (aspectInfo) {
+      await supabase.rpc('update_video_status_hls', {
+        input_video_id: videoId,
+        input_aspect_ratio: aspectInfo.fractionRatio,
+      });
+      console.log('✅ All files uploaded to Supabase.');
+    } else {
+      throw new Error('Encoding failed, not updating video status on Supabase');
+    }
   } catch (err) {
     console.error('❌ Upload process failed:', err.message);
     console.log('🧹 Cleaning up uploaded files...');
@@ -491,7 +590,6 @@ export async function convertAndUploadToSupabase(
     fs.rmSync(mergedDir, { recursive: true, force: true });
   }
 }
-
 
 export async function deleteSupabaseFolder(folderPath: string) {
   try {
@@ -517,14 +615,22 @@ export async function deleteSupabaseFolder(folderPath: string) {
     if (deleteError) {
       console.error('❌ Xóa file trên Supabase thất bại:', deleteError.message);
     } else {
-      console.log(`🧹 Đã xóa ${filesToDelete.length} file khỏi Supabase: ${folderPath}`);
+      console.log(
+        `🧹 Đã xóa ${filesToDelete.length} file khỏi Supabase: ${folderPath}`,
+      );
     }
   } catch (err) {
-    console.error('❌ Lỗi không xác định khi xóa Supabase folder:', err.message);
+    console.error(
+      '❌ Lỗi không xác định khi xóa Supabase folder:',
+      err.message,
+    );
   }
 }
 
-export function getAspectRatioInfo(width: number, height: number): {
+export function getAspectRatioInfo(
+  width: number,
+  height: number,
+): {
   numberRatio: number;
   fractionRatio: string;
   commonName: string;
@@ -543,22 +649,40 @@ export function getAspectRatioInfo(width: number, height: number): {
     '9:16': 'Vertical/Reels',
     '4:3': 'Standard',
     '1:1': 'Square',
-    '21:9': 'Ultrawide'
+    '21:9': 'Ultrawide',
   };
 
   const commonName = aspectMap[fraction] || 'Uncommon Ratio';
 
   const orientation =
-    ratio > 1
-      ? 'landscape'
-      : ratio < 1
-        ? 'portrait'
-        : 'square';
+    ratio > 1 ? 'landscape' : ratio < 1 ? 'portrait' : 'square';
 
   return {
     numberRatio: ratio,
     fractionRatio: fraction,
     commonName,
-    orientation
+    orientation,
   };
+}
+
+export async function extractThumbnail(
+  videoPath: string,
+  videoId: string,
+  seekTimeInSec = 1,
+): Promise<string> {
+  const slash = (await import('slash')).default;
+  const { $ } = await import('zx');
+
+  const dir = path.join('public/assets/videos', videoId);
+  const outputPath = path.join(dir, 'thumbnail.jpg');
+
+  fs.mkdirSync(dir, { recursive: true });
+
+  await $`ffmpeg -y -ss ${seekTimeInSec} -i ${slash(videoPath)} -frames:v 1 -q:v 2 ${slash(outputPath)}`;
+
+  if (!fs.existsSync(outputPath)) {
+    throw new BadRequestException('Thumbnail extraction failed');
+  }
+
+  return outputPath;
 }

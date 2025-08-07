@@ -1,20 +1,29 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryColumn } from 'typeorm';
-import { Video } from '../../video/entities/video.entity';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
+import { Video } from '../../video/entities/video.entity';
 
 @Entity()
 export class CommentVideo {
-  @PrimaryColumn()
-  videoId: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @PrimaryColumn()
-  profileId: number;
-
-  @ManyToOne(() => Video, video => video.comments, { onDelete: 'CASCADE' })
-  video: Video;
-
-  @ManyToOne(() => Profile, profile => profile.comments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Profile, (profile) => profile.comments, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
   profile: Profile;
+
+  @ManyToOne(() => Video, (video) => video.comments, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
+  video: Video;
 
   @Column('text')
   content: string;

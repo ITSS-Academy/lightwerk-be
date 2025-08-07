@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  ManyToMany,
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
@@ -8,6 +9,7 @@ import {
 import { LikeVideo } from '../../like-video/entities/like-video.entity';
 import { CommentVideo } from '../../comment-video/entities/comment-video.entity';
 import { Playlist } from '../../playlist/entities/playlist.entity';
+import { Video } from '../../video/entities/video.entity';
 
 @Entity()
 export class Profile {
@@ -20,13 +22,16 @@ export class Profile {
   @Column('text')
   email: string;
 
-  @Column('text')
+  @Column('text', { nullable: true })
   avatarPath: string;
 
-  @Column('text')
-  coverPath: string;
+  // @Column('text')
+  // coverPath: string;
 
-  @Column('text')
+  @OneToMany(() => Video, (video) => video.profile)
+  videos: Video[];
+
+  @Column('text', { nullable: true })
   bio: string;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
@@ -42,4 +47,7 @@ export class Profile {
 
   @OneToMany(() => Playlist, (playlist) => playlist.profile, { cascade: true })
   playlists: Playlist[];
+
+  @ManyToMany(() => Video, (video) => video.profiles)
+  historyVideos: Video[];
 }

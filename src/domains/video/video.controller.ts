@@ -13,6 +13,7 @@ import {
   Query,
   Req,
   Res,
+  Put,
 } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -25,9 +26,14 @@ import {
   convertAndUploadToSupabase,
   encodeHLSWithMultipleVideoStreams,
 } from '../../utils/hls-converter';
+import { CreateVideoDto, UploadVideoDto } from './dto/create-video.dto';
+import { ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { UpdateVideoDto } from './dto/update-video.dto';
 
 @Controller('video')
 export class VideoController {
+  userId = '04db2cea-173a-482e-b634-2b904cb77de7';
+
   constructor(private readonly videoService: VideoService) {}
 
   @Post('upload')
@@ -47,23 +53,235 @@ export class VideoController {
       // }
     }),
   )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+        videoId: { type: 'string' },
+        videoName: { type: 'string' },
+      },
+    },
+  })
   async create(
-    @Body() createVideoDto: any,
+    @Body() uploadVideoDto: UploadVideoDto,
     @UploadedFiles() files: Array<Express.Multer.File>,
+    @Res() res: Response,
   ) {
     // const fileType = await fileTypeFromBuffer(file.buffer)
 
-    const videoId = createVideoDto.videoId!;
+    const videoId = uploadVideoDto.videoId!;
     const nameDir = `public/assets/chunks/${videoId}`;
 
     if (!fs.existsSync(nameDir)) {
       fs.mkdirSync(nameDir);
     }
 
-    fs.cpSync(files[0].path, `${nameDir}/${createVideoDto.videoName}`);
+    fs.cpSync(files[0].path, `${nameDir}/${uploadVideoDto.videoName}`);
 
     fs.rmSync(files[0].path);
-    return await this.videoService.create(createVideoDto, files);
+
+    res.status(200).json({
+      message: 'Video file uploaded successfully',
+      videoId: videoId,
+    });
+  }
+
+  @Post('merge')
+  @ApiConsumes('multipart/form-data')
+  async merge(@Query('videoId') videoId: string) {
+    const nameDir = `public/assets/chunks/${videoId}`;
+    if (!fs.existsSync(nameDir)) {
+      throw new BadRequestException('Video chunks directory does not exist');
+    }
+
+    // Ensure the directory exists
+    const files = fs
+      .readdirSync(nameDir)
+      .filter((f) => f.endsWith('.mp4') || f.includes('.part'))
+      .sort((a, b) => {
+        const aIndex = parseInt(a.split('.part')[1] || '0', 10);
+        const bIndex = parseInt(b.split('.part')[1] || '0', 10);
+        return aIndex - bIndex;
+      });
+
+    if (files.length === 0) {
+      throw new BadRequestException('No video chunks found to merge');
+    }
+
+    const originalFileName = files[0].split('.part')[0];
+    const mergedFilePath = `public/assets/videos/${videoId}/${originalFileName}`;
+    fs.mkdirSync(`public/assets/videos/${videoId}`, { recursive: true });
+
+    const writeStream = fs.createWriteStream(mergedFilePath);
+
+    for (const file of files) {
+      const filePath = `${nameDir}/${file}`;
+      const readStream = fs.createReadStream(`${filePath}`);
+      readStream.pipe(writeStream, { end: false });
+      await finished(readStream); // ensure one finishes before starting next
+    }
+
+    writeStream.end();
+
+    // Clean up chunks directory
+    fs.rmSync(nameDir, { recursive: true, force: true });
+
+    // convert to HLS
+    console.log(
+      'mergedFilePath =',
+      mergedFilePath,
+      'exists =',
+      fs.existsSync(mergedFilePath),
+    );
+
+    const result = await this.videoService.uploadDefaultThumbnail(
+      videoId,
+      this.userId,
+    );
+    console.log('re', result);
+
+    convertAndUploadToSupabase(videoId, mergedFilePath);
+
+    return result;
+  }
+
+  @Post('create-info')
+  @UseInterceptors(
+    FileInterceptor('thumbnail', {
+      limits: {
+        fileSize: 2 * 1024 * 1024,
+      },
+      fileFilter(
+        req: any,
+        file: {
+          fieldname: string;
+          originalname: string;
+          encoding: string;
+          mimetype: string;
+          size: number;
+          destination: string;
+          filename: string;
+          path: string;
+          buffer: Buffer;
+        },
+        callback: (error: Error | null, acceptFile: boolean) => void,
+      ) {
+        const allowedTypes = ['image/jpeg', 'image/png'];
+        if (!allowedTypes.includes(file.mimetype)) {
+          return callback(
+            new BadRequestException('Only JPEG and PNG files are allowed'),
+            false,
+          );
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        thumbnail: {
+          type: 'string',
+          format: 'binary',
+        },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        isPublic: { type: 'boolean' },
+        id: { type: 'string' },
+      },
+    },
+  })
+  async createVideoInfo(
+    @Body() createVideoDto: CreateVideoDto,
+    @UploadedFile() thumbnail: Express.Multer.File,
+    @Res() res: Response,
+  ) {
+    const videoData = await this.videoService.updateInfo(
+      createVideoDto,
+      thumbnail,
+    );
+    res.status(201).json(videoData);
+  }
+
+  @Get(':videoId')
+  async getVideo(@Param('videoId') videoId: string, @Res() res: Response) {
+    await this.videoService.getVideo(videoId);
+  }
+
+  @Get('likes/comments/:videoId')
+  async getLikesAndComments(@Param('videoId') videoId: string) {
+    return await this.videoService.getLikesAndComments(videoId, this.userId);
+  }
+
+  @Get('comments/:videoId/:start/:limit')
+  async getComments(
+    @Param('videoId') videoId: string,
+    @Param('start') start: number,
+    @Param('limit') limit: number,
+  ) {
+    return await this.videoService.getComments(videoId, start, limit);
+  }
+
+  @Get('recommendations/:videoId')
+  async getRecommendations(@Param('videoId') videoId: string) {
+    return await this.videoService.getRecommendations(videoId);
+  }
+
+  //get videos by following users
+  @Get('following-videos')
+  async getFollowingVideos(@Req() req: Request) {
+    return await this.videoService.getFollowingVideos(this.userId);
+  }
+
+  @Get('user-videos/:userId')
+  async getUserVideos(
+    @Param('userId') userId: string,
+    @Query('start') start: number,
+    @Query('limit') limit: number,
+  ) {
+    return await this.videoService.getUserVideos(userId, start, limit);
+  }
+
+  @Get('category/:categoryId')
+  async getVideosByCategory(
+    @Param('categoryId') categoryId: string,
+    @Query('start') start: number,
+    @Query('limit') limit: number,
+  ) {
+    return await this.videoService.getVideosByCategory(
+      categoryId,
+      start,
+      limit,
+    );
+  }
+
+  @Get('search')
+  async searchVideos(
+    @Query('query') query: string,
+    @Query('start') start: number,
+    @Query('limit') limit: number,
+  ) {
+    return await this.videoService.searchVideos(query, start, limit);
+  }
+
+  @Put('update-info')
+  async updateVideoInfo(updateVideoDto: UpdateVideoDto) {
+    return await this.videoService.updateVideoInfo(updateVideoDto);
+  }
+
+  @Delete(':videoId')
+  async deleteVideo(@Param('videoId') videoId: string) {
+    return await this.videoService.deleteVideo(videoId);
   }
 
   // @Post('merge')
@@ -100,97 +318,6 @@ export class VideoController {
   //     }
   //   )
   // }
-
-  @Post('merge')
-  @UseInterceptors(
-    FileInterceptor('thumbnail', {
-      limits: {
-        fileSize: 2 * 1024 * 1024,
-      },
-      fileFilter(
-        req: any,
-        file: {
-          fieldname: string;
-          originalname: string;
-          encoding: string;
-          mimetype: string;
-          size: number;
-          destination: string;
-          filename: string;
-          path: string;
-          buffer: Buffer;
-        },
-        callback: (error: Error | null, acceptFile: boolean) => void,
-      ) {
-        const allowedTypes = ['image/jpeg', 'image/png'];
-        if (!allowedTypes.includes(file.mimetype)) {
-          return callback(
-            new BadRequestException('Only JPEG and PNG files are allowed'),
-            false,
-          );
-        }
-        callback(null, true);
-      },
-    }),
-  )
-  async merge(
-    @Query('videoId') videoId: string,
-    @UploadedFile() thumbnail: Express.Multer.File,
-    @Body() body: any,
-  ) {
-    const nameDir = `public/assets/chunks/${videoId}`;
-    if (!fs.existsSync(nameDir)) {
-      throw new BadRequestException('Video chunks directory does not exist');
-    }
-
-    // Ensure the directory exists
-    const files = fs
-      .readdirSync(nameDir)
-      .filter((f) => f.endsWith('.mp4') || f.includes('.part'))
-      .sort((a, b) => {
-        const aIndex = parseInt(a.split('.part')[1] || '0', 10);
-        const bIndex = parseInt(b.split('.part')[1] || '0', 10);
-        return aIndex - bIndex;
-      });
-
-    if (files.length === 0) {
-      throw new BadRequestException('No video chunks found to merge');
-    }
-
-    const originalFileName = files[0].split('.part')[0];
-    const mergedFilePath = `public/assets/videos/${videoId}/${originalFileName}`;
-    fs.mkdirSync(`public/assets/videos/${videoId}`, { recursive: true });
-
-    const writeStream = fs.createWriteStream(mergedFilePath);
-
-    for (const file of files) {
-      const filePath = `${nameDir}/${file}`;
-      const readStream = fs.createReadStream(filePath);
-      readStream.pipe(writeStream, { end: false });
-      await finished(readStream); // ensure one finishes before starting next
-    }
-
-    writeStream.end();
-
-    // Clean up chunks directory
-    fs.rmSync(nameDir, { recursive: true, force: true });
-
-    // convert to HLS
-    console.log(
-      'mergedFilePath =',
-      mergedFilePath,
-      'exists =',
-      fs.existsSync(mergedFilePath),
-    );
-    convertAndUploadToSupabase(videoId, mergedFilePath);
-
-    return {
-      message: 'Video chunks merged successfully',
-      videoId,
-      originalFileName,
-      hlsPath: path.join('public', 'assets', 'videos', videoId, 'master.m3u8'),
-    };
-  }
 
   // @Get('stream')
   // stream(@Req() req: Request, @Res() res: Response) {
