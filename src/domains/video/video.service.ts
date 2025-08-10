@@ -273,11 +273,10 @@ export class VideoService {
 
     // Get recommendations based on category
     const { data: recommendations, error: recError } = await supabase
-      .from('video')
-      .select('*')
-      .in('category.id', categoryIds)
-      .neq('id', videoId)
-      .limit(10);
+      .rpc('get_video_recommendations',{
+        category_ids: categoryIds,
+        exclude_video_id: videoId,
+      })
 
     if (recError) {
       console.error('Error fetching recommendations:', recError);
