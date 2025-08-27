@@ -13,6 +13,8 @@ import { Playlist } from '../../playlist/entities/playlist.entity';
 import { Profile } from '../../profile/entities/profile.entity';
 import { CommentVideo } from '../../comment-video/entities/comment-video.entity';
 import { Category } from '../../category/entities/category.entity';
+import { HistoryVideo } from '../../history_videos/entities/history_video.entity';
+import { PlaylistVideo } from '../../playlist_videos/entities/playlist_video.entity';
 
 @Entity()
 export class Video {
@@ -34,6 +36,12 @@ export class Video {
   @Column('text', { nullable: true })
   aspectRatio: string; //
 
+  @Column('text', { nullable: true })
+  width: string;
+
+  @Column('text', { nullable: true })
+  height: string;
+
   @Column({ type: 'enum', enum: VideoStatus })
   status: VideoStatus; //
 
@@ -41,8 +49,11 @@ export class Video {
   @Column('boolean')
   isPublic: boolean;
 
-  @Column('int8', { default: 0 })
+  @Column('int', { default: 0 })
   viewCount: number;
+
+  @Column('float', { nullable: true })
+  duration: number;
 
   @ManyToOne(() => Profile, (profile) => profile.videos, {
     onDelete: 'CASCADE',
@@ -56,21 +67,17 @@ export class Video {
   @OneToMany(() => CommentVideo, (comment) => comment.video)
   comments: CommentVideo[];
 
-  @ManyToMany(() => Category, (category) => category.videos)
-  @JoinTable({ name: 'video_categories' })
+  @ManyToOne(() => Category, (category) => category.videos)
   category: Category;
 
-  @ManyToMany(() => Playlist, (playlist) => playlist.videos, {
+  @OneToMany(() => PlaylistVideo, (playlist) => playlist.video, {
     cascade: true,
     onDelete: 'CASCADE',
   })
-  @JoinTable({ name: 'video_playlists' })
-  playlists: Playlist[];
+  playlists: PlaylistVideo[];
 
-  @ManyToMany(() => Profile, (profile) => profile.historyVideos, {
+  @OneToMany(() => HistoryVideo, (history) => history.video, {
     cascade: true,
-    onDelete: 'CASCADE',
   })
-  @JoinTable({ name: 'history_videos' })
-  profiles: Profile[];
+  history: HistoryVideo[];
 }

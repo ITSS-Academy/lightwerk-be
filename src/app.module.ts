@@ -1,4 +1,9 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -9,9 +14,11 @@ import { join } from 'path';
 import { LikeVideoModule } from './domains/like-video/like-video.module';
 import { ProfileModule } from './domains/profile/profile.module';
 import { PlaylistModule } from './domains/playlist/playlist.module';
-import { AuthMiddleware } from './middlwares/auth/auth.middleware';
 import { CommentVideoModule } from './domains/comment-video/comment-video.module';
 import { CategoryModule } from './domains/category/category.module';
+import { HistoryVideosModule } from './domains/history_videos/history_videos.module';
+import { PlaylistVideosModule } from './domains/playlist_videos/playlist_videos.module';
+import { AuthMiddleware } from './middlewares/auth/auth.middleware';
 
 @Module({
   imports: [
@@ -37,13 +44,57 @@ import { CategoryModule } from './domains/category/category.module';
     CommentVideoModule,
     PlaylistModule,
     CategoryModule,
+    HistoryVideosModule,
+    PlaylistVideosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-// export class AppModule implements NestModule {
-//   configure(consumer: MiddlewareConsumer) {
-//     consumer.apply(AuthMiddleware).forRoutes('*');
-//   }
-// }
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AuthMiddleware).forRoutes(
+      {
+        path: 'video/merge',
+        method: RequestMethod.POST,
+      },
+      {
+        path: 'video/likes/comments/*',
+        method: RequestMethod.GET,
+      },
+      {
+        path: 'video/recommendations/*',
+        method: RequestMethod.GET,
+      },
+      {
+        path: 'video/following-videos',
+        method: RequestMethod.GET,
+      },
+      {
+        path: 'video/*',
+        method: RequestMethod.DELETE,
+      },
+      {
+        path: 'video/update-info',
+        method: RequestMethod.PUT,
+      },
+      {
+        path: 'playlist/*',
+        method: RequestMethod.POST,
+      },
+      {
+        path: 'playlist/*',
+        method: RequestMethod.DELETE,
+      },
+      {
+        path: 'playlist/*',
+        method: RequestMethod.PUT,
+      },
+      {
+        path: 'playlist/all-playlists/*',
+        method: RequestMethod.GET,
+      },
+    );
+  }
+}
+
+// export class AppModule {}

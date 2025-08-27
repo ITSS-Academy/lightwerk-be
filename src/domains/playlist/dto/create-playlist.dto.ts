@@ -1,8 +1,16 @@
-import { IsNotEmpty, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class CreatePlaylistDto {}
+export class CreatePlaylistDto {
+  @IsNotEmpty()
+  title: string;
 
-export class AddToPlaylistDto {
+  @Type(() => Boolean)
+  @IsBoolean()
+  isPublic: boolean;
+}
+
+export class VideoPlaylistDto {
   @IsUUID()
   @IsNotEmpty()
   videoId: string;

@@ -1,4 +1,10 @@
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  ManyToMany,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Video } from '../../video/entities/video.entity';
 
 @Entity()
@@ -9,7 +15,7 @@ export class Category {
   @Column('text')
   name: string;
 
-  @ManyToMany(() => Video, (video) => video.category, {
+  @OneToMany(() => Video, (video) => video.category, {
     onDelete: 'CASCADE',
   })
   videos: Video[];

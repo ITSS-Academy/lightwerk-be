@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { supabase } from '../../utils/supabase';
 
 @Injectable()
 export class CategoryService {
@@ -8,8 +9,14 @@ export class CategoryService {
     return 'This action adds a new category';
   }
 
-  findAll() {
-    return `This action returns all category`;
+  async findAll() {
+    const { data, error } = await supabase.from('category').select('*');
+
+    if (error) {
+      throw new BadRequestException('Failed to fetch categories');
+    }
+
+    return data;
   }
 
   findOne(id: number) {

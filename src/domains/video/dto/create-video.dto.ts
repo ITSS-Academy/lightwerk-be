@@ -19,9 +19,12 @@ export class CreateVideoDto {
   @IsOptional()
   description: string;
 
-  @IsBoolean()
   @Type(() => Boolean)
+  @IsBoolean()
   isPublic: boolean;
+
+  @IsUUID()
+  categoryId: string;
 }
 
 export class UploadVideoDto {

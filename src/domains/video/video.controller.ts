@@ -14,6 +14,8 @@ import {
   Req,
   Res,
   Put,
+  ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -29,10 +31,13 @@ import {
 import { CreateVideoDto, UploadVideoDto } from './dto/create-video.dto';
 import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { UpdateVideoDto } from './dto/update-video.dto';
+import { OwnerGuard } from '../../guards/owner/owner.guard';
+import { OwnerCheck } from '../../guards/owner/owner-check.decorator';
+import { OptionalAuthGuard } from '../../guards/optional-auth/optional-auth.guard';
 
 @Controller('video')
 export class VideoController {
-  userId = '04db2cea-173a-482e-b634-2b904cb77de7';
+  userId = '7bd0330f-b0e1-4ee7-aba0-fff2860e749d';
 
   constructor(private readonly videoService: VideoService) {}
 
@@ -96,7 +101,7 @@ export class VideoController {
 
   @Post('merge')
   @ApiConsumes('multipart/form-data')
-  async merge(@Query('videoId') videoId: string) {
+  async merge(@Query('videoId') videoId: string, @Req() req: any) {
     const nameDir = `public/assets/chunks/${videoId}`;
     if (!fs.existsSync(nameDir)) {
       throw new BadRequestException('Video chunks directory does not exist');
@@ -142,9 +147,12 @@ export class VideoController {
       fs.existsSync(mergedFilePath),
     );
 
+    const userId = req.user.id;
+    console.log(userId);
+
     const result = await this.videoService.uploadDefaultThumbnail(
       videoId,
-      this.userId,
+      userId,
     );
     console.log('re', result);
 
@@ -213,13 +221,19 @@ export class VideoController {
     res.status(201).json(videoData);
   }
 
-  @Get(':videoId')
-  async getVideo(@Param('videoId') videoId: string, @Res() res: Response) {
-    await this.videoService.getVideo(videoId);
+  @Get('/get-video/:videoId')
+  @UseGuards(OptionalAuthGuard)
+  async getVideo(@Param('videoId') videoId: string, @Req() req: any) {
+    return await this.videoService.getVideo(videoId, req.user?.id);
   }
 
   @Get('likes/comments/:videoId')
-  async getLikesAndComments(@Param('videoId') videoId: string) {
+  async getLikesAndComments(
+    @Req() req: any,
+    @Param('videoId') videoId: string,
+  ) {
+    const userId = req.user.id;
+    console.log(userId);
     return await this.videoService.getLikesAndComments(videoId, this.userId);
   }
 
@@ -233,54 +247,105 @@ export class VideoController {
   }
 
   @Get('recommendations/:videoId')
-  async getRecommendations(@Param('videoId') videoId: string) {
-    return await this.videoService.getRecommendations(videoId);
+  async getRecommendations(
+    @Param('videoId') videoId: string,
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+  ) {
+    return await this.videoService.getRecommendations(
+      videoId,
+      page,
+      limit,
+      this.userId,
+    );
+  }
+
+  //get video info
+  @Get('info/:videoId')
+  async getVideoInfo(@Param('videoId') videoId: string) {
+    return await this.videoService.getVideoInfo(videoId);
   }
 
   //get videos by following users
   @Get('following-videos')
   async getFollowingVideos(@Req() req: Request) {
-    return await this.videoService.getFollowingVideos(this.userId);
+    return await this.videoService.getVideosByFollowingProfile(this.userId);
   }
 
+  // ==============================================
   @Get('user-videos/:userId')
+  @UseGuards(OptionalAuthGuard)
   async getUserVideos(
     @Param('userId') userId: string,
-    @Query('start') start: number,
+    @Query('page') page: number,
     @Query('limit') limit: number,
+    @Query('orderBy') orderBy: 'asc' | 'desc' = 'desc',
+    @Req() req: any,
   ) {
-    return await this.videoService.getUserVideos(userId, start, limit);
+    // Ensure orderBy is a string and valid, default to 'DESC'
+    const order =
+      typeof orderBy === 'string' &&
+      ['asc', 'desc'].includes(orderBy.toLowerCase())
+        ? (orderBy.toUpperCase() as 'ASC' | 'DESC')
+        : 'DESC';
+    console.log('order =', order, userId, page, limit, req.user?.id);
+
+    return await this.videoService.getUserVideos(
+      userId,
+      page,
+      limit,
+      req.user?.id,
+      order,
+    );
   }
 
-  @Get('category/:categoryId')
-  async getVideosByCategory(
-    @Param('categoryId') categoryId: string,
-    @Query('start') start: number,
+  @Get('trending')
+  async getTrendingVideos(
+    @Query('page') page: number,
     @Query('limit') limit: number,
   ) {
-    return await this.videoService.getVideosByCategory(
-      categoryId,
-      start,
-      limit,
-    );
+    return await this.videoService.getTrendingVideos(page, limit);
+  }
+
+  @Get('latest')
+  async getLatestVideos(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+  ) {
+    return await this.videoService.getLatestVideos(page, limit);
+  }
+
+  @Get('category')
+  async getVideosByCategory(
+    @Query('categoryId') categoryId: string,
+    @Query('page', new ParseIntPipe()) page: number,
+    @Query('limit', new ParseIntPipe()) limit: number,
+  ) {
+    return await this.videoService.getVideosByCategory(categoryId, page, limit);
   }
 
   @Get('search')
   async searchVideos(
     @Query('query') query: string,
-    @Query('start') start: number,
+    @Query('page') page: number,
     @Query('limit') limit: number,
   ) {
-    return await this.videoService.searchVideos(query, start, limit);
+    return await this.videoService.searchVideos(query, page, limit);
   }
 
   @Put('update-info')
-  async updateVideoInfo(updateVideoDto: UpdateVideoDto) {
+  @UseGuards(OwnerGuard)
+  @OwnerCheck({ entity: 'video', param: 'id' })
+  async updateVideoInfo(@Body() updateVideoDto: UpdateVideoDto) {
     return await this.videoService.updateVideoInfo(updateVideoDto);
   }
 
   @Delete(':videoId')
-  async deleteVideo(@Param('videoId') videoId: string) {
+  @UseGuards(OwnerGuard)
+  @OwnerCheck({ entity: 'video', param: 'videoId' })
+  async deleteVideo(@Req() req: any, @Param('videoId') videoId: string) {
+    const userId = req.user.id;
+    console.log(userId);
     return await this.videoService.deleteVideo(videoId);
   }
 

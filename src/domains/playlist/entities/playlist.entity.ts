@@ -6,9 +6,11 @@ import {
   PrimaryGeneratedColumn,
   JoinColumn,
   JoinTable,
+  OneToMany,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
 import { Video } from '../../video/entities/video.entity';
+import { PlaylistVideo } from '../../playlist_videos/entities/playlist_video.entity';
 
 @Entity()
 export class Playlist {
@@ -21,10 +23,13 @@ export class Playlist {
   @Column('text')
   thumbnailPath: string;
 
+  @Column('boolean', { default: true })
+  isPublic: boolean;
+
   @ManyToOne(() => Profile, (profile) => profile.playlists)
   @JoinColumn()
   profile: Profile;
 
-  @ManyToMany(() => Video, (video) => video.playlists)
+  @OneToMany(() => PlaylistVideo, (playlistVideo) => playlistVideo.playlist)
   videos: Video[];
 }

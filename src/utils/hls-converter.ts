@@ -66,7 +66,17 @@ const getBitrate = async (filePath: string) => {
   return bitrate;
 };
 
-const getResolution = async (filePath: string) => {
+export const getDuration = async (filePath: string) => {
+  const { $ } = await import('zx');
+  const slash = (await import('slash')).default;
+  const { stdout } =
+    await $`ffprobe -v error -show_entries format=duration -of csv=p=0 ${slash(filePath)}`;
+
+  console.log(`Video duration: ${stdout.trim()} seconds`);
+  return parseFloat(stdout.trim());
+};
+
+export const getResolution = async (filePath: string) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
@@ -424,9 +434,10 @@ const encodeMaxOriginal = async ({
 };
 
 export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
-  const [bitrate, resolution] = await Promise.all([
+  const [bitrate, resolution, duration] = await Promise.all([
     getBitrate(inputPath),
     getResolution(inputPath),
+    getDuration(inputPath),
   ]);
   const parent_folder = path.join(inputPath, '..');
   const outputSegmentPath = path.join(parent_folder, 'v%v/fileSequence%d.ts');
@@ -461,7 +472,10 @@ export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
     outputSegmentPath,
     resolution,
   });
-  return resolution;
+  return {
+    resolution,
+    duration,
+  };
 };
 
 async function retryUpload(fn: () => Promise<any>, retries = 3) {
@@ -488,10 +502,19 @@ export async function convertAndUploadToSupabase(
         commonName: string;
       }
     | undefined;
+  let width: number | undefined;
+  let height: number | undefined;
+  let inputDuration: number | undefined;
 
   try {
-    const resolution = await encodeHLSWithMultipleVideoStreams(mergedFilePath);
+    const { resolution, duration } =
+      await encodeHLSWithMultipleVideoStreams(mergedFilePath);
+    console.log(`📏 Resolution: ${resolution.width}x${resolution.height}`);
+    inputDuration = duration;
+    console.log(`⏱ Duration: ${inputDuration} seconds`);
     aspectInfo = getAspectRatioInfo(resolution.width, resolution.height);
+    width = resolution.width;
+    height = resolution.height;
     console.log(
       `📏 Aspect Ratio: ${aspectInfo.fractionRatio} (${aspectInfo.commonName})`,
     );
@@ -576,6 +599,9 @@ export async function convertAndUploadToSupabase(
       await supabase.rpc('update_video_status_hls', {
         input_video_id: videoId,
         input_aspect_ratio: aspectInfo.fractionRatio,
+        input_width: width,
+        input_height: height,
+        input_duration: inputDuration,
       });
       console.log('✅ All files uploaded to Supabase.');
     } else {
