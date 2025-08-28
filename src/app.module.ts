@@ -62,7 +62,7 @@ export class AppModule implements NestModule {
         method: RequestMethod.GET,
       },
       {
-        path: 'video/recommendations/*',
+        path: 'video/recommendations-based-on-history',
         method: RequestMethod.GET,
       },
       {

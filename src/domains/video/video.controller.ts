@@ -247,16 +247,36 @@ export class VideoController {
   }
 
   @Get('recommendations/:videoId')
+  @UseGuards(OptionalAuthGuard)
   async getRecommendations(
     @Param('videoId') videoId: string,
     @Query('page') page: number,
     @Query('limit') limit: number,
+    @Req() req: any,
   ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      return await this.videoService.getGeneralRecommendations(page, limit);
+    }
     return await this.videoService.getRecommendations(
       videoId,
       page,
       limit,
-      this.userId,
+      userId,
+    );
+  }
+
+  @Get('recommendations-based-on-history')
+  async getRecommendationsBasedOnHistory(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id;
+    return await this.videoService.getRecommendationsBasedOnHistory(
+      page,
+      limit,
+      userId,
     );
   }
 

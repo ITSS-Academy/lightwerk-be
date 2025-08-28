@@ -600,7 +600,7 @@ export class VideoService {
     }
 
     return {
-      videos: data,
+      videos: this.shuffleArray(data),
       pagination: {
         totalCount: count,
         page: page,
@@ -738,5 +738,101 @@ export class VideoService {
           : VideoStatus.PROCESSING;
     }
     return data;
+  }
+
+  async getRecommendationsBasedOnHistory(
+    page: number,
+    limit: number,
+    userId: any,
+  ) {
+    // 1. Get user's watch history (most recent first)
+    const { data: history, error: historyError } = await supabase
+      .from('history_videos')
+      .select('videoId')
+      .eq('profileId', userId)
+      .order('createdAt', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (historyError) {
+      throw new BadRequestException('Failed to fetch user history');
+    }
+    if (!history || history.length === 0) {
+      return { videos: [], pagination: { totalCount: 0, page, limit } };
+    }
+    const watchedVideoIds = history.map((h) => h.videoId);
+
+    // 2. Get categories of watched videos
+    const { data: watchedVideos, error: watchedVideosError } = await supabase
+      .from('video')
+      .select('id, categoryId')
+      .in('id', watchedVideoIds);
+    if (watchedVideosError) {
+      throw new BadRequestException('Failed to fetch watched videos');
+    }
+    const categoryIds = [
+      ...new Set(watchedVideos.map((v) => v.categoryId).filter(Boolean)),
+    ];
+    if (categoryIds.length === 0) {
+      return { videos: [], pagination: { totalCount: 0, page, limit } };
+    }
+
+    // 3. Find other videos in those categories, not in watched, public, SUCCESS
+    const {
+      data: recVideos,
+      error: recError,
+      count,
+    } = await supabase
+      .from('video')
+      .select('*, profile:profileId(*)', { count: 'exact' })
+      .in('categoryId', categoryIds)
+      .not('id', 'in', `(${watchedVideoIds.join(',')})`)
+      .eq('isPublic', true)
+      .eq('status', VideoStatus.SUCCESS)
+      .order('createdAt', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (recError) {
+      console.log(recError);
+      throw new BadRequestException('Failed to fetch recommendations');
+    }
+
+    // 4. Add videoPath for each video
+    const videos = (recVideos || []).map((video) => ({
+      ...video,
+      videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
+    }));
+
+    return {
+      videos: this.shuffleArray(videos),
+      pagination: {
+        totalCount: count,
+        page,
+        limit,
+      },
+    };
+  }
+
+  async getGeneralRecommendations(page: number, limit: number) {
+    // Return latest public, SUCCESS videos with profile info
+    const { data, error, count } = await supabase
+      .from('video')
+      .select('*, profile:profileId(*)', { count: 'exact' })
+      .eq('isPublic', true)
+      .eq('status', 'SUCCESS')
+      .order('createdAt', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (error) {
+      throw new BadRequestException('Failed to fetch general recommendations');
+    }
+    const videos = (data || []).map((video) => ({
+      ...video,
+      videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
+    }));
+    return {
+      videos: this.shuffleArray(videos),
+      pagination: {
+        totalCount: count,
+        page,
+        limit,
+      },
+    };
   }
 }
