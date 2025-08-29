@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { supabase } from './supabase';
 import * as fs from 'fs';
-import { sleep } from 'zx';
 import { BadRequestException } from '@nestjs/common';
-import { VideoStatus } from '../enums/video-status';
+import { spawn } from 'child_process'
+
 
 const MAXIMUM_BITRATE_720P = 5 * 10 ** 6; // 5Mbps
 const MAXIMUM_BITRATE_1080P = 8 * 10 ** 6; // 8Mbps
@@ -12,6 +12,8 @@ const MAXIMUM_BITRATE_1440P = 16 * 10 ** 6; // 16Mbps
 export const checkVideoHasAudio = async (filePath: string) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
+
+  console.log('Checking if video has audio stream:', filePath);
   const { stdout } = await $`ffprobe ${[
     '-v',
     'error',
@@ -80,17 +82,19 @@ export const getResolution = async (filePath: string) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
-  const { stdout } = await $`ffprobe ${[
-    '-v',
-    'error',
-    '-select_streams',
-    'v:0',
-    '-show_entries',
-    'stream=width,height',
-    '-of',
-    'csv=s=x:p=0',
-    slash(filePath),
-  ]}`;
+  // const { stdout } = await $`ffprobe ${[
+  //   '-v',
+  //   'error',
+  //   '-select_streams',
+  //   'v:0',
+  //   '-show_entries',
+  //   'stream=width,height',
+  //   '-of',
+  //   'csv=s=x:p=0',
+  //   slash(filePath),
+  // ]}`;
+  // Use a template string instead of an array for PowerShell compatibility
+  const { stdout } = await $`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${slash(filePath)}`;
   const resolution = stdout.trim().split('x');
   const [width, height] = resolution;
   return {
@@ -163,13 +167,14 @@ const encodeMax720 = async ({
     `${bitrate[720]}`,
     '-c:a',
     'copy',
-    '-var_stream_map',
   );
   if (isHasAudio) {
-    args.push('v:0,a:0');
+    args.push('-var_stream_map', '"v:0,a:0"');
   } else {
-    args.push('v:0');
+    args.push('-var_stream_map', '"v:0"');
   }
+
+  console.log('FFMPEG output args:', slash(outputPath));
   args.push(
     '-master_pl_name',
     'master.m3u8',
@@ -184,7 +189,23 @@ const encodeMax720 = async ({
     slash(outputPath),
   );
 
-  await $`ffmpeg ${args}`;
+  console.log('FFMPEG ARGS:', args.join(' '));
+
+  const process = spawn('ffmpeg', args, { stdio: 'inherit', shell: true });
+
+  await new Promise((resolve, reject) => {
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+      } else {
+        reject(new Error(`ffmpeg exited with code ${code}`));
+      }
+    });
+    process.on('error', (err) => {
+      reject(err);
+    });
+  });
+
   return true;
 };
 
@@ -196,8 +217,9 @@ const encodeMax1080 = async ({
   outputSegmentPath,
   resolution,
 }: EncodeByResolution) => {
-  const { $ } = await import('zx');
+  // const { $ } = await import('zx');
   const slash = (await import('slash')).default;
+
 
   const args = [
     '-y',
@@ -232,28 +254,41 @@ const encodeMax1080 = async ({
     `${bitrate[1080]}`,
     '-c:a',
     'copy',
-    '-var_stream_map',
   );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1');
+    // Use Windows-safe var_stream_map (no name:...)
+    args.push('-var_stream_map', '"v:0,a:0,name:0 v:1,a:1,name:1"');
   } else {
-    args.push('v:0 v:1');
+    args.push('-var_stream_map', '"v:0 v:1"');
   }
-  args.push(
-    '-master_pl_name',
-    'master.m3u8',
-    '-f',
-    'hls',
-    '-hls_time',
-    '10',
-    '-hls_list_size',
-    '0',
-    '-hls_segment_filename',
-    slash(outputSegmentPath),
-    slash(outputPath),
-  );
+  args.push('-master_pl_name', 'master.m3u8');
+  args.push('-f', 'hls');
+  args.push('-hls_time', '10');
+  args.push('-hls_list_size', '0');
+  args.push('-hls_segment_filename', slash(outputSegmentPath));
+  args.push(slash(outputPath));
 
-  await $`ffmpeg ${args}`;
+  // console.log('FFMPEG output args:', slash(outputPath));
+
+  console.log('FFMPEG ARGS:', args.join(' '));
+
+    // await $`ffmpeg ${args}`;
+
+  const process = spawn('ffmpeg', args, { stdio: 'inherit', shell: true });
+
+  await new Promise((resolve, reject) => {
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+      } else {
+        reject(new Error(`ffmpeg exited with code ${code}`));
+      }
+    });
+    process.on('error', (err) => {
+      reject(err);
+    });
+  });
+
   return true;
 };
 
@@ -320,12 +355,11 @@ const encodeMax1440 = async ({
     `${bitrate[1440]}`,
     '-c:a',
     'copy',
-    '-var_stream_map',
   );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1 v:2,a:2');
+    args.push('-var_stream_map', '"v:0,a:0 v:1,a:1 v:2,a:2"');
   } else {
-    args.push('v:0 v:1 v:2');
+    args.push('-var_stream_map', '"v:0 v:1 v:2"');
   }
   args.push(
     '-master_pl_name',
@@ -341,7 +375,23 @@ const encodeMax1440 = async ({
     slash(outputPath),
   );
 
-  await $`ffmpeg ${args}`;
+  console.log('FFMPEG ARGS:', args.join(' '));
+
+  const process = spawn('ffmpeg', args, { stdio: 'inherit', shell: true });
+
+  await new Promise((resolve, reject) => {
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+      } else {
+        reject(new Error(`ffmpeg exited with code ${code}`));
+      }
+    });
+    process.on('error', (err) => {
+      reject(err);
+    });
+  });
+
   return true;
 };
 
@@ -408,12 +458,16 @@ const encodeMaxOriginal = async ({
     `${bitrate.original}`,
     '-c:a',
     'copy',
-    '-var_stream_map',
   );
   if (isHasAudio) {
-    args.push('v:0,a:0 v:1,a:1 v:2,a:2');
+    args.push(
+      '-var_stream_map',
+      '"v:0,a:0 v:1,a:1 v:2,a:2"'
+    );
   } else {
-    args.push('v:0 v:1 v:2');
+    args.push(
+      '-var_stream_map',
+      '"v:0 v:1 v:2"');
   }
   args.push(
     '-master_pl_name',
@@ -429,7 +483,23 @@ const encodeMaxOriginal = async ({
     slash(outputPath),
   );
 
-  await $`ffmpeg ${args}`;
+  console.log('FFMPEG ARGS:', args.join(' '));
+
+  const process = spawn('ffmpeg', args, { stdio: 'inherit', shell: true });
+
+  await new Promise((resolve, reject) => {
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+      } else {
+        reject(new Error(`ffmpeg exited with code ${code}`));
+      }
+    });
+    process.on('error', (err) => {
+      reject(err);
+    });
+  });
+
   return true;
 };
 
@@ -479,6 +549,7 @@ export const encodeHLSWithMultipleVideoStreams = async (inputPath: string) => {
 };
 
 async function retryUpload(fn: () => Promise<any>, retries = 3) {
+  const sleep = await import('zx').then((m) => m.sleep);
   for (let i = 0; i < retries; i++) {
     try {
       return await fn();
@@ -495,6 +566,8 @@ export async function convertAndUploadToSupabase(
   mergedFilePath: string,
 ) {
   const mergedDir = path.dirname(mergedFilePath);
+  const sleep = await import('zx').then((m) => m.sleep);
+
   console.log('🔁 Encoding HLS for:', mergedFilePath);
   let aspectInfo:
     | {
@@ -613,7 +686,7 @@ export async function convertAndUploadToSupabase(
     await deleteSupabaseFolder(videoId);
   } finally {
     // Cleanup local files nếu cần
-    fs.rmSync(mergedDir, { recursive: true, force: true });
+    // fs.rmSync(mergedDir, { recursive: true, force: true });
   }
 }
 
@@ -696,8 +769,16 @@ export async function extractThumbnail(
   videoId: string,
   seekTimeInSec = 1,
 ): Promise<string> {
+
   const slash = (await import('slash')).default;
-  const { $ } = await import('zx');
+  const { $, quote } = await import('zx');
+
+  $.shell = 'cmd.exe';
+
+  $.verbose = false;
+  $.prefix = '';
+  process.env.PATH = `C:\\ffmpeg\\bin;${process.env.PATH}`;  // add ffmpeg bin vào PATH
+
 
   const dir = path.join('public/assets/videos', videoId);
   const outputPath = path.join(dir, 'thumbnail.jpg');
@@ -712,3 +793,7 @@ export async function extractThumbnail(
 
   return outputPath;
 }
+
+
+
+
