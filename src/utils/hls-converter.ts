@@ -9,98 +9,190 @@ const MAXIMUM_BITRATE_720P = 5 * 10 ** 6; // 5Mbps
 const MAXIMUM_BITRATE_1080P = 8 * 10 ** 6; // 8Mbps
 const MAXIMUM_BITRATE_1440P = 16 * 10 ** 6; // 16Mbps
 
-export const checkVideoHasAudio = async (filePath: string) => {
-  const { $ } = await import('zx');
-  const slash = (await import('slash')).default;
-
+export async function checkVideoHasAudio(filePath: string): Promise<boolean> {
   console.log('Checking if video has audio stream:', filePath);
-  const { stdout } = await $`ffprobe ${[
-    '-v',
-    'error',
-    '-select_streams',
-    'a:0',
-    '-show_entries',
-    'stream=codec_type',
-    '-of',
-    'default=nw=1:nk=1',
-    slash(filePath),
-  ]}`;
-  return stdout.trim() === 'audio';
-};
-
-const getBitrate = async (filePath: string) => {
-  const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
-  // Ưu tiên đọc bitrate từ stream video
-  const { stdout: streamOut } = await $`ffprobe ${[
-    '-v',
-    'error',
-    '-select_streams',
-    'v:0',
-    '-show_entries',
-    'stream=bit_rate',
-    '-of',
-    'default=nw=1:nk=1',
+  const args = [
+    '-v', 'error',
+    '-select_streams', 'a:0',
+    '-show_entries', 'stream=codec_type',
+    '-of', 'default=nw=1:nk=1',
     slash(filePath),
-  ]}`;
+  ];
 
-  let bitrate = Number(streamOut.trim());
+  return new Promise<boolean>((resolve, reject) => {
+    const proc = spawn('ffprobe', args);
+    let stdout = '';
+    let stderr = '';
 
-  if (!streamOut.trim() || isNaN(bitrate) || bitrate === 0) {
-    // Fallback: đọc bitrate từ định dạng tổng
-    const { stdout: formatOut } = await $`ffprobe ${[
-      '-v',
-      'error',
-      '-show_entries',
-      'format=bit_rate',
-      '-of',
-      'default=nw=1:nk=1',
+    proc.stdout.on('data', (data) => {
+      stdout += data;
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data;
+    });
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(stderr || `ffprobe exited with code ${code}`));
+      }
+      resolve(stdout.trim() === 'audio');
+    });
+  });
+}
+
+export async function getBitrate(filePath: string): Promise<number> {
+  const slash = (await import('slash')).default;
+  const runProbe = (args: string[]) =>
+    new Promise<string>((resolve, reject) => {
+      const proc = spawn('ffprobe', args);
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data) => (stdout += data));
+      proc.stderr.on('data', (data) => (stderr += data));
+
+      proc.on('close', (code) => {
+        if (code === 0) resolve(stdout.trim());
+        else reject(new Error(stderr || `ffprobe exited with code ${code}`));
+      });
+    });
+
+  // Try stream-level
+  let out = await runProbe([
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=bit_rate',
+    '-of', 'default=nw=1:nk=1',
+    slash(filePath),
+  ]);
+
+  let bitrate = Number(out);
+
+  if (!out || isNaN(bitrate) || bitrate === 0) {
+    // Fallback format-level
+    out = await runProbe([
+      '-v', 'error',
+      '-show_entries', 'format=bit_rate',
+      '-of', 'default=nw=1:nk=1',
       slash(filePath),
-    ]}`;
-    bitrate = Number(formatOut.trim());
+    ]);
+    bitrate = Number(out);
   }
 
   if (isNaN(bitrate) || bitrate === 0) {
     throw new Error(`Unable to parse video bitrate from file: ${filePath}`);
   }
 
+  console.log(`Video bitrate: ${bitrate} bps`);
+
   return bitrate;
-};
+}
 
-export const getDuration = async (filePath: string) => {
-  const { $ } = await import('zx');
-  const slash = (await import('slash')).default;
-  const { stdout } =
-    await $`ffprobe -v error -show_entries format=duration -of csv=p=0 ${slash(filePath)}`;
-
-  console.log(`Video duration: ${stdout.trim()} seconds`);
-  return parseFloat(stdout.trim());
-};
-
-export const getResolution = async (filePath: string) => {
-  const { $ } = await import('zx');
+export const getDuration = async (filePath: string): Promise<number> => {
   const slash = (await import('slash')).default;
 
-  // const { stdout } = await $`ffprobe ${[
-  //   '-v',
-  //   'error',
-  //   '-select_streams',
-  //   'v:0',
-  //   '-show_entries',
-  //   'stream=width,height',
-  //   '-of',
-  //   'csv=s=x:p=0',
-  //   slash(filePath),
-  // ]}`;
-  // Use a template string instead of an array for PowerShell compatibility
-  const { stdout } = await $`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${slash(filePath)}`;
-  const resolution = stdout.trim().split('x');
-  const [width, height] = resolution;
-  return {
-    width: Number(width),
-    height: Number(height),
-  };
+  return new Promise((resolve, reject) => {
+
+    // Prepare ffprobe command arguments
+    const args = [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'csv=p=0',
+      slash(filePath)
+    ];
+
+    // Spawn ffprobe process
+
+    const ffprobe = spawn('ffprobe', args, {  shell: true });
+
+    let stdout = '';
+    let stderr = '';
+
+    // Collect stdout data
+    ffprobe.stdout!.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    // Collect stderr data
+    ffprobe.stderr!.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    // Handle process completion
+    ffprobe.on('close', (code) => {
+      if (code === 0) {
+        const duration = parseFloat(stdout.trim());
+        console.log(`Video duration: ${duration} seconds`);
+        resolve(duration);
+      } else {
+        reject(new Error(`ffprobe failed with code ${code}: ${stderr}`));
+      }
+    });
+
+    // Handle process errors
+    ffprobe.on('error', (err) => {
+      reject(new Error(`Failed to spawn ffprobe: ${err.message}`));
+    });
+  });
+};
+
+export const getResolution = async (filePath: string): Promise<{ width: number; height: number }> => {
+  const slash = (await import('slash')).default;
+
+  return new Promise((resolve, reject) => {
+    // Ensure ffmpeg is in PATH
+    // Prepare ffprobe command arguments
+
+    const args = [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=s=x:p=0',
+      slash(filePath)
+    ];
+
+    // Spawn ffprobe process
+    const ffprobe = spawn('ffprobe', args, { shell: true });
+
+    let stdout = '';
+    let stderr = '';
+
+    console.log('Getting video resolution with ffprobe:', args.join(' '));
+
+    // Collect stdout data
+    ffprobe.stdout!.on('data', (data) => {
+      console.log('ffprobe stdout:', data.toString());
+      stdout += data.toString();
+    });
+
+    // Collect stderr data
+    ffprobe.stderr!.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    // Handle process completion
+    ffprobe.on('close', (code) => {
+      if (code === 0) {
+        const resolution = stdout.trim().split('x');
+        const [width, height] = resolution;
+        console.log(`Video resolution: ${width}x${height}`);
+        resolve({
+          width: Number(width),
+          height: Number(height),
+        });
+      } else {
+        reject(new Error(`ffprobe failed with code ${code}: ${stderr}`));
+      }
+    });
+
+    // Handle process errors
+    ffprobe.on('error', (err) => {
+      reject(new Error(`Failed to spawn ffprobe: ${err.message}`));
+    });
+  });
 };
 
 const getWidth = (
@@ -130,13 +222,13 @@ type EncodeByResolution = {
 };
 
 const encodeMax720 = async ({
-  bitrate,
-  inputPath,
-  isHasAudio,
-  outputPath,
-  outputSegmentPath,
-  resolution,
-}: EncodeByResolution) => {
+                              bitrate,
+                              inputPath,
+                              isHasAudio,
+                              outputPath,
+                              outputSegmentPath,
+                              resolution,
+                            }: EncodeByResolution) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
@@ -210,13 +302,13 @@ const encodeMax720 = async ({
 };
 
 const encodeMax1080 = async ({
-  bitrate,
-  inputPath,
-  isHasAudio,
-  outputPath,
-  outputSegmentPath,
-  resolution,
-}: EncodeByResolution) => {
+                               bitrate,
+                               inputPath,
+                               isHasAudio,
+                               outputPath,
+                               outputSegmentPath,
+                               resolution,
+                             }: EncodeByResolution) => {
   // const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
@@ -272,7 +364,7 @@ const encodeMax1080 = async ({
 
   console.log('FFMPEG ARGS:', args.join(' '));
 
-    // await $`ffmpeg ${args}`;
+  // await $`ffmpeg ${args}`;
 
   const process = spawn('ffmpeg', args, { stdio: 'inherit', shell: true });
 
@@ -293,13 +385,13 @@ const encodeMax1080 = async ({
 };
 
 const encodeMax1440 = async ({
-  bitrate,
-  inputPath,
-  isHasAudio,
-  outputPath,
-  outputSegmentPath,
-  resolution,
-}: EncodeByResolution) => {
+                               bitrate,
+                               inputPath,
+                               isHasAudio,
+                               outputPath,
+                               outputSegmentPath,
+                               resolution,
+                             }: EncodeByResolution) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
@@ -396,13 +488,13 @@ const encodeMax1440 = async ({
 };
 
 const encodeMaxOriginal = async ({
-  bitrate,
-  inputPath,
-  isHasAudio,
-  outputPath,
-  outputSegmentPath,
-  resolution,
-}: EncodeByResolution) => {
+                                   bitrate,
+                                   inputPath,
+                                   isHasAudio,
+                                   outputPath,
+                                   outputSegmentPath,
+                                   resolution,
+                                 }: EncodeByResolution) => {
   const { $ } = await import('zx');
   const slash = (await import('slash')).default;
 
@@ -571,9 +663,9 @@ export async function convertAndUploadToSupabase(
   console.log('🔁 Encoding HLS for:', mergedFilePath);
   let aspectInfo:
     | {
-        fractionRatio: string;
-        commonName: string;
-      }
+    fractionRatio: string;
+    commonName: string;
+  }
     | undefined;
   let width: number | undefined;
   let height: number | undefined;
@@ -686,7 +778,7 @@ export async function convertAndUploadToSupabase(
     await deleteSupabaseFolder(videoId);
   } finally {
     // Cleanup local files nếu cần
-    // fs.rmSync(mergedDir, { recursive: true, force: true });
+    fs.rmSync(mergedDir, { recursive: true, force: true });
   }
 }
 
@@ -771,13 +863,8 @@ export async function extractThumbnail(
 ): Promise<string> {
 
   const slash = (await import('slash')).default;
-  const { $, quote } = await import('zx');
 
-  $.shell = 'cmd.exe';
-
-  $.verbose = false;
-  $.prefix = '';
-  process.env.PATH = `C:\\ffmpeg\\bin;${process.env.PATH}`;  // add ffmpeg bin vào PATH
+  process.env.PATH = `C:\\ffmpeg\\bin;${process.env.PATH}`;
 
 
   const dir = path.join('public/assets/videos', videoId);
@@ -785,15 +872,34 @@ export async function extractThumbnail(
 
   fs.mkdirSync(dir, { recursive: true });
 
-  await $`ffmpeg -y -ss ${seekTimeInSec} -i ${slash(videoPath)} -frames:v 1 -q:v 2 ${slash(outputPath)}`;
+  const extractThumbnail = spawn('ffmpeg', [
+    '-y',
+    '-ss',
+    seekTimeInSec.toString(),
+    '-i',
+    slash(videoPath),
+    '-frames:v',
+    '1',
+    '-q:v',
+    '2',
+    slash(outputPath),
+  ],{ stdio: 'inherit', shell: true })
 
-  if (!fs.existsSync(outputPath)) {
-    throw new BadRequestException('Thumbnail extraction failed');
-  }
+
+  await new Promise((resolve, reject) => {
+    //
+    extractThumbnail.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+      } else {
+        reject(new BadRequestException(`ffmpeg exited with code ${code}`));
+      }
+    });
+    extractThumbnail.on('error', (err) => {
+      reject(err);
+    });
+  },);
+
 
   return outputPath;
 }
-
-
-
-
