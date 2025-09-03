@@ -226,7 +226,7 @@ export class VideoService {
     };
   }
 
-  async getLikesAndComments(videoId: string, userId: string) {
+  async getLikesAndComments(videoId: string, userId: string | null) {
     // Get likes for the video
     const {
       data: likes,
@@ -260,11 +260,31 @@ export class VideoService {
     }
 
     // check user isLiked
-    const isLiked = likes.some((like) => like.profileId === userId);
+    let isLiked = false;
+    if (userId) {
+      isLiked = likes.some((like) => like.profileId === userId);
+    }
+
+    // check if video is saved in any playlist owned by the user (isSave)
+    let isSave = false;
+    if (userId) {
+      // Join video_playlists with playlist and video, check playlist.ownerId === userId
+      const { data: savedPlaylists, error: playlistError } = await supabase
+        .from('video_playlists')
+        .select('playlist(id, profileId), video(id)')
+        .eq('videoId', videoId)
+        .eq('playlist.profileId', userId);
+      if (playlistError) {
+        console.error('Error fetching saved playlists:', playlistError);
+        throw new BadRequestException('Failed to fetch saved playlists');
+      }
+      isSave = Array.isArray(savedPlaylists) && savedPlaylists.length > 0;
+    }
 
     return {
       likesCount,
       isLiked,
+      isSave,
       comments,
       commentsCount,
     };

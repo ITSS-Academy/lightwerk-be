@@ -227,14 +227,15 @@ export class VideoController {
     return await this.videoService.getVideo(videoId, req.user?.id);
   }
 
-  @Get('likes/comments/:videoId')
+  @Get('likes-comments-playlists/:videoId')
+  @UseGuards(OptionalAuthGuard)
   async getLikesAndComments(
     @Req() req: any,
     @Param('videoId') videoId: string,
   ) {
-    const userId = req.user.id;
+    const userId = req.user.id || null;
     console.log(userId);
-    return await this.videoService.getLikesAndComments(videoId, this.userId);
+    return await this.videoService.getLikesAndComments(videoId, userId);
   }
 
   @Get('comments/:videoId/:start/:limit')
