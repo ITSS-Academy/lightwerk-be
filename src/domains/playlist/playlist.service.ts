@@ -5,24 +5,56 @@ import { supabase } from '../../utils/supabase';
 
 @Injectable()
 export class PlaylistService {
-  async create(createPlaylistDto: CreatePlaylistDto, userId: string) {
-    const { data, error } = await supabase
+  async create(createPlaylistDto: CreatePlaylistDto, userId: string, thumbnail?: Express.Multer.File) {
+    let thumbnailPath = 'https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/thumbnails/d5b95e26-f9fd-4448-b25d-c5c77c624b8f/thumbnail.jpg';
+
+    const { data: playlistData, error: playlistError } = await supabase
       .from('playlist')
       .insert({
         title: createPlaylistDto.title,
-        thumbnailPath:
-          'https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/thumbnails/defaults/default.png',
         profileId: userId,
         isPublic: createPlaylistDto.isPublic,
       })
-      .select();
+      .select()
 
-    if (error) {
-      console.log(error);
-      throw new BadRequestException('Failed to create playlist');
+    if (playlistError) {
+      console.log(playlistError);
+      throw new BadRequestException(playlistError);
     }
 
-    return data[0];
+    const playlistId = playlistData[0].id;
+
+    if (thumbnail) {
+      // Upload the file to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('thumbnails')
+        .upload(`${playlistId}/${thumbnail.originalname}`, thumbnail.buffer, {
+          contentType: thumbnail.mimetype,
+        });
+
+      if (error) {
+        console.log(error);
+        throw new BadRequestException('Failed to upload thumbnail');
+      }
+
+      // Update the playlist with the new thumbnail path
+      thumbnailPath = data.path;
+
+      const { error: updateError } = await supabase
+        .from('playlist')
+        .update({ thumbnailPath })
+        .eq('id', playlistId);
+
+      if (updateError) {
+        console.log(updateError);
+        throw new BadRequestException('Failed to update playlist thumbnail');
+      }
+    }
+    
+    return {
+      ...playlistData[0],
+      thumbnailPath,
+    };
   }
 
   findAll() {
@@ -211,6 +243,8 @@ export class PlaylistService {
         .select('*')
         .eq('isPublic', true)
         .eq('profileId', userId);
+        console.log(playlists);
+
       if (error) {
         console.log(error);
         throw new BadRequestException('Failed to fetch public playlists');
