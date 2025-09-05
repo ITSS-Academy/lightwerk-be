@@ -24,39 +24,61 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OwnerGuard } from '../../guards/owner/owner.guard';
 import { OwnerCheck } from '../../guards/owner/owner-check.decorator';
+import { OptionalAuthGuard } from '../../guards/optional-auth/optional-auth.guard';
 
 @Controller('playlist')
 export class PlaylistController {
   constructor(private readonly playlistService: PlaylistService) {}
 
   @Post('create')
-  create(@Body() createPlaylistDto: CreatePlaylistDto, @Req() req: any) {
-    const userId = req.user?.id;
-
-    return this.playlistService.create(createPlaylistDto, userId);
+  @UseInterceptors(FileInterceptor('thumbnail'))
+  async create(
+    @Body() createPlaylistDto: CreatePlaylistDto,
+    @Req() req: any,
+    @UploadedFile() thumbnail?: Express.Multer.File,
+  ) {
+    try {
+      const userId = req.user?.id;
+      return this.playlistService.create(createPlaylistDto, userId, thumbnail);
+    } catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 
   @Post('add-video')
   @UseGuards(OwnerGuard)
   @OwnerCheck({ entity: 'playlist', param: 'playlistId' })
   addTrack(@Body() addToPlaylistDto: VideoPlaylistDto) {
-    const { playlistId, videoId } = addToPlaylistDto;
-    return this.playlistService.addToPlaylist({ playlistId, videoId });
+    try {
+      const { playlistId, videoId } = addToPlaylistDto;
+      return this.playlistService.addToPlaylist({ playlistId, videoId });
+    } catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 
   @Delete('delete/:id')
   @UseGuards(OwnerGuard)
   @OwnerCheck({ entity: 'playlist', param: 'id' })
   delete(@Param('id') id: string) {
-    return this.playlistService.remove(id);
+    try {
+      return this.playlistService.remove(id);
+    } catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 
   @Delete('remove-video')
   @UseGuards(OwnerGuard)
   @OwnerCheck({ entity: 'playlist', param: 'playlistId' })
   removeTrack(@Body() deleteTrackDto: VideoPlaylistDto) {
-    const { playlistId, videoId } = deleteTrackDto;
-    return this.playlistService.removeFromPlaylist(playlistId, videoId);
+    try {
+      const { playlistId, videoId } = deleteTrackDto;
+      return this.playlistService.removeFromPlaylist(playlistId, videoId);
+    } catch (error) {
+      throw new BadRequestException(error);
+    }
+
   }
 
   @Put('update-title')
@@ -66,7 +88,11 @@ export class PlaylistController {
     @Query()
     query: UpdateTitleDto,
   ) {
-    return this.playlistService.updateTitle(query);
+    try {
+      return this.playlistService.updateTitle(query);
+    }catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 
   @Put('update-thumbnail/:playlistId')
@@ -149,11 +175,20 @@ export class PlaylistController {
 
   @Get('all-videos/:id')
   async getTracks(@Param('id') id: string) {
-    return this.playlistService.getPlaylistWithVideosAndProfiles(id);
+    try {
+      return this.playlistService.getPlaylistWithVideosAndProfiles(id);
+    }catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 
   @Get('all-playlists/:uid')
+  @UseGuards(OptionalAuthGuard)
   async getPlaylist(@Param('uid') uid: string, @Req() req: any) {
-    return this.playlistService.getAllPlaylists(uid, req.user.id);
+    try {
+      return this.playlistService.getAllPlaylists(uid, req.user.id);
+    }catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 }

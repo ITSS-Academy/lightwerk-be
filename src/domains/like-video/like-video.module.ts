@@ -6,4 +6,6 @@ import { LikeVideoController } from './like-video.controller';
   controllers: [LikeVideoController],
   providers: [LikeVideoService],
 })
-export class LikeVideoModule {}
+export class LikeVideoModule {
+
+}

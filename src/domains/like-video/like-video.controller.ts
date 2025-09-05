@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  HttpException,
+  HttpStatus,
+  BadRequestException,
+} from '@nestjs/common';
 import { LikeVideoService } from './like-video.service';
 import { CreateLikeVideoDto } from './dto/create-like-video.dto';
 import { UpdateLikeVideoDto } from './dto/update-like-video.dto';
@@ -9,12 +20,25 @@ export class LikeVideoController {
 
   @Post()
   create(@Body() createLikeVideoDto: CreateLikeVideoDto) {
-    return this.likeVideoService.create(createLikeVideoDto);
+    try {
+      return this.likeVideoService.create(createLikeVideoDto);
+    }
+    catch (error) {
+      throw new BadRequestException(error)
+    }
   }
 
-  @Get()
-  findAll() {
-    return this.likeVideoService.findAll();
+
+  @Get('get-likes-video/:videoId')
+  findAll(
+    @Param('videoId') videoId: string,
+  ) {
+    try {
+      return this.likeVideoService.findAll(videoId);
+    }
+    catch (error) {
+      throw new BadRequestException(error)
+    }
   }
 
   @Get(':id')
@@ -27,8 +51,15 @@ export class LikeVideoController {
     return this.likeVideoService.update(+id, updateLikeVideoDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.likeVideoService.remove(+id);
+  @Delete(':profileId/:videoId')
+  remove(
+    @Param('profileId') profileId: string,
+    @Param('videoId') videoId: string,
+  ) {
+    try {
+      return this.likeVideoService.remove(profileId, videoId);
+    } catch (error) {
+      throw new BadRequestException(error);
+    }
   }
 }
