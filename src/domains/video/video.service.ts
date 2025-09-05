@@ -502,7 +502,11 @@ export class VideoService {
     return { message: 'Video and all related files deleted successfully' };
   }
 
-  async getVideosByFollowingProfile(userId: string) {
+  async getVideosByFollowingProfile(
+    userId: string,
+    page: number,
+    limit: number,
+  ) {
     // get the list of profiles that the user is following
     const { data: followingProfiles, error: followingError } = await supabase
       .from('profile_follows')
@@ -523,14 +527,16 @@ export class VideoService {
 
     console.log(followingIds);
 
-    const videos = await this.videoRepo
+    const [videos, count] = await this.videoRepo
       .createQueryBuilder('video')
       .leftJoinAndSelect('video.profile', 'profile')
       .where('video.profileId IN (:...ids)', { ids: followingIds })
       .andWhere('video.isPublic = :isPublic', { isPublic: true })
       .andWhere('video.status = :status', { status: VideoStatus.SUCCESS })
       .orderBy('video.createdAt', 'DESC')
-      .getMany();
+      .skip(page * limit)
+      .take(limit)
+      .getManyAndCount();
 
     if (!videos || videos.length === 0) {
       return [];
@@ -540,6 +546,11 @@ export class VideoService {
         ...video,
         videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
       })),
+      pagination: {
+        totalCount: count,
+        page: page,
+        limit: limit,
+      },
     };
   }
 

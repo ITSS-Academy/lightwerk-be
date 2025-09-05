@@ -20,7 +20,7 @@ export class Playlist {
   @Column('text')
   title: string;
 
-  @Column('text')
+  @Column('text', { nullable: true })
   thumbnailPath: string;
 
   @Column('boolean', { default: true })
