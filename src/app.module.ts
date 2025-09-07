@@ -89,10 +89,15 @@ export class AppModule implements NestModule {
         path: 'playlist/*',
         method: RequestMethod.PUT,
       },
+
       {
-        path: 'playlist/all-playlists/*',
-        method: RequestMethod.GET,
+        path: 'like-video/*',
+        method: RequestMethod.POST,
       },
+      {
+        path: 'like-video/*',
+        method: RequestMethod.DELETE,
+      }
     );
   }
 }

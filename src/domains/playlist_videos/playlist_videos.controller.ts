@@ -10,6 +10,7 @@ export class PlaylistVideosController {
   @Post()
   create(@Body() createPlaylistVideoDto: CreatePlaylistVideoDto) {
     return this.playlistVideosService.create(createPlaylistVideoDto);
+
   }
 
   @Get()

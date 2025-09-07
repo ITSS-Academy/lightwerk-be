@@ -1,1 +1,3 @@
-export class CreateLikeVideoDto {}
+export class CreateLikeVideoDto {
+  videoId: string;
+}

@@ -23,6 +23,6 @@ export class LikeVideo {
   @ManyToOne(() => Profile, (profile) => profile.likes, { onDelete: 'CASCADE' })
   profile: Profile;
 
-  @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

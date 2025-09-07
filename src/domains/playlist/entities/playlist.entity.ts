@@ -7,6 +7,7 @@ import {
   JoinColumn,
   JoinTable,
   OneToMany,
+  CreateDateColumn,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
 import { Video } from '../../video/entities/video.entity';
@@ -25,6 +26,9 @@ export class Playlist {
 
   @Column('boolean', { default: true })
   isPublic: boolean;
+
+  @CreateDateColumn({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 
   @ManyToOne(() => Profile, (profile) => profile.playlists)
   @JoinColumn()
