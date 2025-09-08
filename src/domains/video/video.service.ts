@@ -171,7 +171,7 @@ export class VideoService {
     // https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/248e1cc9-c9ae-46cd-8e16-8da531b058f9/master.m3u8
     const { data, error } = await supabase
       .from('video')
-      .select()
+      .select('*, profile!FK_553f97d797c91d51556037b99e5(*)')
       .eq('id', videoId)
       .single();
     if (error) {
@@ -198,6 +198,7 @@ export class VideoService {
     }
 
     console.log(profileId);
+    console.log('Fetching video and updating view count/history');
     // Always increment view count
     const [{ error: updateError }, { error: historyErr }] = await Promise.all([
       supabase.rpc('increment_view_count', {
