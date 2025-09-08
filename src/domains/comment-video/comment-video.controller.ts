@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  BadRequestException, Req,
+} from '@nestjs/common';
 import { CommentVideoService } from './comment-video.service';
 import { CreateCommentVideoDto } from './dto/create-comment-video.dto';
 import { UpdateCommentVideoDto } from './dto/update-comment-video.dto';
@@ -7,15 +16,41 @@ import { UpdateCommentVideoDto } from './dto/update-comment-video.dto';
 export class CommentVideoController {
   constructor(private readonly commentVideoService: CommentVideoService) {}
 
-  @Post()
-  create(@Body() createCommentVideoDto: CreateCommentVideoDto) {
-    return this.commentVideoService.create(createCommentVideoDto);
+  @Post('create')
+  create(@Body() createCommentVideoDto: CreateCommentVideoDto, @Req() req: any) {
+    //create a comment for a video
+    try {
+      const uid = req.user.id;
+      return this.commentVideoService.create(createCommentVideoDto, uid);
+    }catch (error) {
+      throw new BadRequestException(error)
+    }
+  }
+
+  @Get('get-comments-video/:videoId')
+  getAllComments(
+    @Param('videoId') videoId: string,
+  ) {
+    try {
+      return this.commentVideoService.getAllComments(videoId);
+    }
+    catch (error) {
+      throw new BadRequestException(error)
+    }
   }
 
   @Get()
   findAll() {
-    return this.commentVideoService.findAll();
+    try {
+      return this.commentVideoService.findAll();
+    }
+    catch (error) {
+      throw new BadRequestException(error)
+    }
   }
+
+
+
 
   @Get(':id')
   findOne(@Param('id') id: string) {

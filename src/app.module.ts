@@ -97,6 +97,10 @@ export class AppModule implements NestModule {
       {
         path: 'like-video/*',
         method: RequestMethod.DELETE,
+      },
+      {
+        path: 'comment-video/*',
+        method: RequestMethod.POST,
       }
     );
   }

@@ -1,11 +1,49 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateCommentVideoDto } from './dto/create-comment-video.dto';
 import { UpdateCommentVideoDto } from './dto/update-comment-video.dto';
+import { supabase } from '../../utils/supabase';
 
 @Injectable()
 export class CommentVideoService {
-  create(createCommentVideoDto: CreateCommentVideoDto) {
-    return 'This action adds a new commentVideo';
+  //create a comment for a video
+  async create(createCommentVideoDto: CreateCommentVideoDto, profileId: string) {
+    const { data ,error } =  await supabase
+      .from('comment_video')
+      .insert({
+        ...createCommentVideoDto,
+        profileId: profileId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(error);
+    }
+
+    const { data: comments, error: commentsError } = await supabase
+      .from('comment_video')
+      .select('*,profile(*)', { count: 'exact' })
+      .eq('videoId', createCommentVideoDto.videoId);
+
+    if (commentsError) {
+      throw new BadRequestException(commentsError);
+    }
+
+    return comments;
+  }
+  //get all comments for a videos
+  async getAllComments(videoId: string) {
+    const { data: comments, error: commentsError } = await supabase
+      .from('comment_video')
+      .select('*,profile(*)', { count: 'exact' })
+      .eq('videoId', videoId)
+      .order('createdAt', { ascending: false });
+
+    if (commentsError) {
+      throw new BadRequestException(commentsError);
+    }
+
+    return comments;
   }
 
   findAll() {
