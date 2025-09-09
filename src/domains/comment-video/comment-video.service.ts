@@ -6,8 +6,11 @@ import { supabase } from '../../utils/supabase';
 @Injectable()
 export class CommentVideoService {
   //create a comment for a video
-  async create(createCommentVideoDto: CreateCommentVideoDto, profileId: string) {
-    const { data ,error } =  await supabase
+  async create(
+    createCommentVideoDto: CreateCommentVideoDto,
+    profileId: string,
+  ) {
+    const { data, error } = await supabase
       .from('comment_video')
       .insert({
         ...createCommentVideoDto,
@@ -23,7 +26,8 @@ export class CommentVideoService {
     const { data: comments, error: commentsError } = await supabase
       .from('comment_video')
       .select('*,profile(*)', { count: 'exact' })
-      .eq('videoId', createCommentVideoDto.videoId);
+      .eq('videoId', createCommentVideoDto.videoId)
+      .order('createdAt', { ascending: false });
 
     if (commentsError) {
       throw new BadRequestException(commentsError);
@@ -31,6 +35,7 @@ export class CommentVideoService {
 
     return comments;
   }
+
   //get all comments for a videos
   async getAllComments(videoId: string) {
     const { data: comments, error: commentsError } = await supabase
