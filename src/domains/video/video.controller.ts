@@ -233,7 +233,7 @@ export class VideoController {
     @Req() req: any,
     @Param('videoId') videoId: string,
   ) {
-    const userId = req.user.id || null;
+    const userId = req.user?.id || null;
     console.log(userId);
     return await this.videoService.getLikesAndComments(videoId, userId);
   }
