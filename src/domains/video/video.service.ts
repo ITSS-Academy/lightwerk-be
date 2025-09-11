@@ -592,13 +592,41 @@ export class VideoService {
   }
 
   async searchVideos(query: string) {
-    const { data, error, count } = await supabase
+    const { data: profiles, error: profileError } = await supabase
+      .from('profile')
+      .select('id')
+      .ilike('username', `%${query}%`);
+
+    if (profileError) {
+      throw new BadRequestException('Failed to search profiles');
+    }
+
+    const { data, error } = await supabase
       .from('video')
-      .select('*', { count: 'exact' })
+      .select('*,profile!FK_553f97d797c91d51556037b99e5(*)', { count: 'exact' })
       .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
       .eq('isPublic', true)
       .eq('status', VideoStatus.SUCCESS)
       .order('createdAt', { ascending: false });
+
+    const {
+      data: videosByProfile,
+      error: videosByProfileError,
+      count: videosByProfileCount,
+    } = await supabase
+      .from('video')
+      .select('*,profile!FK_553f97d797c91d51556037b99e5(*)', { count: 'exact' })
+      .in(
+        'profileId',
+        profiles.map((p) => p.id),
+      )
+      .eq('isPublic', true)
+      .eq('status', VideoStatus.SUCCESS)
+      .order('createdAt', { ascending: false });
+
+    if (videosByProfileError) {
+      throw new BadRequestException('Failed to search videos by profile');
+    }
 
     if (error) {
       console.error('Error searching videos:', error);
@@ -606,9 +634,9 @@ export class VideoService {
     }
 
     return {
-      videos: data,
+      videos: [...(data || []), ...(videosByProfile || [])],
       pagination: {
-        totalCount: count,
+        totalCount: (data?.length || 0) + (videosByProfileCount || 0),
       },
     };
   }
