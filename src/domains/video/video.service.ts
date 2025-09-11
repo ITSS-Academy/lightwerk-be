@@ -591,15 +591,14 @@ export class VideoService {
     }
   }
 
-  async searchVideos(query: string, start: number, limit: number) {
+  async searchVideos(query: string) {
     const { data, error, count } = await supabase
       .from('video')
       .select('*', { count: 'exact' })
       .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
       .eq('isPublic', true)
       .eq('status', VideoStatus.SUCCESS)
-      .order('createdAt', { ascending: false })
-      .range(start, start + limit - 1);
+      .order('createdAt', { ascending: false });
 
     if (error) {
       console.error('Error searching videos:', error);
@@ -610,8 +609,6 @@ export class VideoService {
       videos: data,
       pagination: {
         totalCount: count,
-        page: start,
-        limit: limit,
       },
     };
   }
