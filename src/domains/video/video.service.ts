@@ -724,9 +724,12 @@ export class VideoService {
   async getLatestVideos(page: number, limit: number) {
     const { data, error, count } = await supabase
       .from('video')
-      .select('*, profile!FK_553f97d797c91d51556037b99e5(*)', {
-        count: 'exact',
-      })
+      .select(
+        '*, profile!FK_553f97d797c91d51556037b99e5(*), like_video(count)',
+        {
+          count: 'exact',
+        },
+      )
       .eq('isPublic', true)
       .eq('status', VideoStatus.SUCCESS)
       .order('createdAt', { ascending: false })
@@ -740,6 +743,7 @@ export class VideoService {
       videos: data.map((video) => ({
         ...video,
         videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
+        likeCount: video.like_video[0]?.count || 0,
       })),
       pagination: {
         totalCount: count,
