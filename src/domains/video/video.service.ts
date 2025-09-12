@@ -528,23 +528,49 @@ export class VideoService {
 
     console.log(followingIds);
 
-    const [videos, count] = await this.videoRepo
-      .createQueryBuilder('video')
-      .leftJoinAndSelect('video.profile', 'profile')
-      .where('video.profileId IN (:...ids)', { ids: followingIds })
-      .andWhere('video.isPublic = :isPublic', { isPublic: true })
-      .andWhere('video.status = :status', { status: VideoStatus.SUCCESS })
-      .orderBy('video.createdAt', 'DESC')
-      .skip(page * limit)
-      .take(limit)
-      .getManyAndCount();
+    // const [videos, count] = await this.videoRepo
+    //   .createQueryBuilder('video')
+    //   .leftJoinAndSelect('video.profile', 'profile')
+    //   .where('video.profileId IN (:...ids)', { ids: followingIds })
+    //   .andWhere('video.isPublic = :isPublic', { isPublic: true })
+    //   .andWhere('video.status = :status', { status: VideoStatus.SUCCESS })
+    //   .orderBy('video.createdAt', 'DESC')
+    //   .skip(page * limit)
+    //   .take(limit)
+    //   .getManyAndCount();
+
+    const { data: videos, error } = await supabase
+      .from('video')
+      .select('*, profile!FK_553f97d797c91d51556037b99e5(*), like_video(count)')
+      .in('profileId', followingIds)
+      .eq('isPublic', true)
+      .eq('status', VideoStatus.SUCCESS)
+      .order('createdAt', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
 
     if (!videos || videos.length === 0) {
       return [];
     }
+
+    if (error) {
+      console.error('Error fetching videos by following profiles:', error);
+      throw new BadRequestException(
+        'Failed to fetch videos by following profiles',
+      );
+    }
+
+    const { count } = await supabase
+      .from('video')
+      .select('id', { count: 'exact', head: true })
+      .in('profileId', followingIds)
+      .eq('isPublic', true)
+      .eq('status', VideoStatus.SUCCESS);
+
+    console.log(videos);
     return {
       videos: videos.map((video) => ({
         ...video,
+        likeCount: (video as any).like_video[0].count,
         videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
       })),
       pagination: {
@@ -749,9 +775,12 @@ export class VideoService {
   async getLatestVideos(page: number, limit: number) {
     const { data, error, count } = await supabase
       .from('video')
-      .select('*, profile!FK_553f97d797c91d51556037b99e5(*)', {
-        count: 'exact',
-      })
+      .select(
+        '*, profile!FK_553f97d797c91d51556037b99e5(*), like_video(count)',
+        {
+          count: 'exact',
+        },
+      )
       .eq('isPublic', true)
       .eq('status', VideoStatus.SUCCESS)
       .order('createdAt', { ascending: false })
@@ -764,6 +793,7 @@ export class VideoService {
     return {
       videos: data.map((video) => ({
         ...video,
+        likeCount: video.like_video[0].count,
         videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
       })),
       pagination: {
