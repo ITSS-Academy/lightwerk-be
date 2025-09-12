@@ -356,12 +356,8 @@ export class VideoController {
   }
 
   @Get('search')
-  async searchVideos(
-    @Query('query') query: string,
-    @Query('page') page: number,
-    @Query('limit') limit: number,
-  ) {
-    return await this.videoService.searchVideos(query, page, limit);
+  async searchVideos(@Query('query') query: string) {
+    return await this.videoService.searchVideos(query);
   }
 
   @Put('update-info')

@@ -5,8 +5,13 @@ import { supabase } from '../../utils/supabase';
 
 @Injectable()
 export class PlaylistService {
-  async create(createPlaylistDto: CreatePlaylistDto, userId: string, thumbnail?: Express.Multer.File) {
-    let thumbnailPath = 'https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/thumbnails/d5b95e26-f9fd-4448-b25d-c5c77c624b8f/thumbnail.jpg';
+  async create(
+    createPlaylistDto: CreatePlaylistDto,
+    userId: string,
+    thumbnail?: Express.Multer.File,
+  ) {
+    let thumbnailPath =
+      'https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/thumbnails/d5b95e26-f9fd-4448-b25d-c5c77c624b8f/thumbnail.jpg';
 
     const { data: playlistData, error: playlistError } = await supabase
       .from('playlist')
@@ -15,7 +20,7 @@ export class PlaylistService {
         profileId: userId,
         isPublic: createPlaylistDto.isPublic,
       })
-      .select()
+      .select();
 
     if (playlistError) {
       console.log(playlistError);
@@ -50,7 +55,7 @@ export class PlaylistService {
         throw new BadRequestException('Failed to update playlist thumbnail');
       }
     }
-    
+
     return {
       ...playlistData[0],
       thumbnailPath,
@@ -203,7 +208,7 @@ export class PlaylistService {
     // Get playlist details
     const { data: playlist, error: playlistError } = await supabase
       .from('playlist')
-      .select('*')
+      .select('*, profile:profileId(*)')
       .eq('id', playlistId)
       .single();
     if (playlistError) {
@@ -243,7 +248,7 @@ export class PlaylistService {
         .select('*')
         .eq('isPublic', true)
         .eq('profileId', userId);
-        console.log(playlists);
+      console.log(playlists);
 
       if (error) {
         console.log(error);

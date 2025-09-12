@@ -51,6 +51,10 @@ import { AuthMiddleware } from './middlewares/auth/auth.middleware';
   providers: [AppService],
 })
 export class AppModule implements NestModule {
+  constructor() {
+    console.log('v1');
+  }
+
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(AuthMiddleware).forRoutes(
       {
@@ -101,7 +105,7 @@ export class AppModule implements NestModule {
       {
         path: 'comment-video/*',
         method: RequestMethod.POST,
-      }
+      },
     );
   }
 }
