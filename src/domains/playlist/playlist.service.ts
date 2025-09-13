@@ -230,12 +230,14 @@ export class PlaylistService {
   }
 
   async getAllPlaylists(userId: string, reqUid: string) {
+    console.log(userId, reqUid);
+    // Check if the requested userId is the same as the requester
     const isOwner = userId === reqUid;
     let data;
     if (isOwner) {
       const { data: playlists, error } = await supabase
         .from('playlist')
-        .select('*')
+        .select('*,video_playlists(count)')
         .eq('profileId', userId);
       if (error) {
         console.log(error);
@@ -243,6 +245,7 @@ export class PlaylistService {
       }
       data = playlists;
     } else {
+      console.log('Fetching public playlists only');
       const { data: playlists, error } = await supabase
         .from('playlist')
         .select('*')
@@ -257,6 +260,9 @@ export class PlaylistService {
       data = playlists;
     }
 
-    return data;
+    return data.map((playlist) => ({
+      ...playlist,
+      videoCount: playlist.video_playlists[0]?.count || 0,
+    }));
   }
 }

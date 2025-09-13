@@ -795,7 +795,6 @@ export class VideoService {
         ...video,
         likeCount: video.like_video[0].count,
         videoPath: `https://zkeqdgfyxlmcrmfehjde.supabase.co/storage/v1/object/public/videos/${video.id}/master.m3u8`,
-        likeCount: video.like_video[0]?.count || 0,
       })),
       pagination: {
         totalCount: count,

@@ -78,7 +78,6 @@ export class PlaylistController {
     } catch (error) {
       throw new BadRequestException(error);
     }
-
   }
 
   @Put('update-title')
@@ -90,7 +89,7 @@ export class PlaylistController {
   ) {
     try {
       return this.playlistService.updateTitle(query);
-    }catch (error) {
+    } catch (error) {
       throw new BadRequestException(error);
     }
   }
@@ -177,7 +176,7 @@ export class PlaylistController {
   async getTracks(@Param('id') id: string) {
     try {
       return this.playlistService.getPlaylistWithVideosAndProfiles(id);
-    }catch (error) {
+    } catch (error) {
       throw new BadRequestException(error);
     }
   }
@@ -186,8 +185,8 @@ export class PlaylistController {
   @UseGuards(OptionalAuthGuard)
   async getPlaylist(@Param('uid') uid: string, @Req() req: any) {
     try {
-      return this.playlistService.getAllPlaylists(uid, req.user.id);
-    }catch (error) {
+      return this.playlistService.getAllPlaylists(uid, req.user?.id);
+    } catch (error) {
       throw new BadRequestException(error);
     }
   }
